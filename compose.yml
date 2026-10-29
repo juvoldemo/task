@@ -1,0 +1,15 @@
+﻿services:
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      DATABASE_PATH: /app/data/teamflow.sqlite
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - teamflow-data:/app/data
+volumes:
+  teamflow-data:

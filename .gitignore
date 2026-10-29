@@ -1,0 +1,13 @@
+﻿node_modules/
+.next/
+teamflow-standalone/
+*.tsbuildinfo
+next-env.d.ts
+.env*
+!.env.example
+data/
+backups/
+*.sqlite*
+*.db*
+coverage/
+npm-debug.log*
