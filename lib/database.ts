@@ -1,59 +1,57 @@
-﻿import { DatabaseSync } from "node:sqlite";
-import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-
-let connection: DatabaseSync | undefined;
-export function getDatabase() {
-  if (connection) return connection;
-  const filename = resolve(
-    /* turbopackIgnore: true */ process.env.DATABASE_PATH ||
-      "./data/teamflow.sqlite",
-  );
-  mkdirSync(dirname(filename), { recursive: true });
-  const db = new DatabaseSync(filename);
-  db.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA busy_timeout = 5000;
-    PRAGMA foreign_keys = ON;
-    CREATE TABLE IF NOT EXISTS accounts (
-      id TEXT PRIMARY KEY NOT NULL,
-      password TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS sessions (
-      id TEXT PRIMARY KEY NOT NULL,
-      user TEXT NOT NULL,
-      expires INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user);
-    CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires);
-    CREATE TABLE IF NOT EXISTS tasks (
-      id TEXT PRIMARY KEY NOT NULL,
-      title TEXT NOT NULL,
-      content TEXT NOT NULL,
-      department INTEGER NOT NULL,
-      assignee TEXT NOT NULL,
-      creator TEXT NOT NULL,
-      deadline TEXT NOT NULL,
-      progress INTEGER NOT NULL DEFAULT 0 CHECK(progress BETWEEN 0 AND 100),
-      priority TEXT NOT NULL,
-      parent TEXT REFERENCES tasks(id),
-      note TEXT NOT NULL DEFAULT '',
-      updated TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS tasks_department ON tasks(department);
-    CREATE INDEX IF NOT EXISTS tasks_parent ON tasks(parent);
-    CREATE TABLE IF NOT EXISTS login_attempts (
-      username TEXT PRIMARY KEY NOT NULL,
-      failures INTEGER NOT NULL,
-      reset_at INTEGER NOT NULL
-    );
-    PRAGMA user_version = 1;
-  `);
-  // Keep legacy percentage data separate from optional completed quantities.
-  const columns = db.prepare("PRAGMA table_info(tasks)").all();
-  if (!columns.some((column) => column.name === "completed_quantity")) {
-    db.exec("ALTER TABLE tasks ADD COLUMN completed_quantity INTEGER CHECK(completed_quantity IS NULL OR completed_quantity >= 0)");
+﻿import { Pool, types, type PoolClient } from "pg";
+// All bigint columns are constrained to JS-safe integers or epoch milliseconds.
+types.setTypeParser(20, Number);
+type Row = Record<string, any>;
+type Statement = { get(...values: any[]): Promise<Row | undefined> | Row | undefined; all(...values: any[]): Promise<Row[]> | Row[]; run(...values: any[]): unknown };
+export type Store = { prepare(sql: string): Statement; transaction(work: (db: Store) => Promise<void>): Promise<void> };
+let pool: Pool | undefined;
+function postgres(client: Pool | PoolClient): Store {
+  return {
+    prepare(sql) {
+      let index = 0;
+      let query = sql.replace(/\?/g, () => `$${++index}`)
+        .replace(/\b(accounts|sessions|tasks|login_attempts)\b/g, 'teamflow.$1')
+        .replace(/\buser\b/g, '"user"');
+      if (query.includes("INSERT OR IGNORE")) query = query.replace("INSERT OR IGNORE", "INSERT") + " ON CONFLICT DO NOTHING";
+      // Qualify the existing row in the rate-limit upsert.
+      query = query.replace("failures=failures+1", "failures=teamflow.login_attempts.failures+1");
+      return {
+        get: async (...values) => (await client.query(query, values)).rows[0],
+        all: async (...values) => (await client.query(query, values)).rows,
+        run: async (...values) => { await client.query(query, values); },
+      };
+    },
+    async transaction(work) {
+      const connection = await (client as Pool).connect();
+      try {
+        await connection.query("BEGIN");
+        await work(postgres(connection));
+        await connection.query("COMMIT");
+      } catch (error) {
+        await connection.query("ROLLBACK");
+        throw error;
+      } finally { connection.release(); }
+    },
+  };
+}
+export async function getDatabase(): Promise<Store> {
+  const connectionString = process.env.SUPABASE_DATABASE_URL;
+  if (connectionString) {
+    if (!pool) {
+      pool = new Pool({ connectionString, max: 3, idleTimeoutMillis: 10000, connectionTimeoutMillis: 10000 });
+      pool.on("error", () => console.error("Supabase database connection interrupted"));
+    }
+    return postgres(pool);
   }
-  connection = db;
-  return db;
+  if (process.env.VERCEL) throw new Error("Set SUPABASE_DATABASE_URL before deploying to Vercel");
+  const db = (await import("./sqlite")).getDatabase();
+  const adapter: Store = {
+    prepare: (sql) => db.prepare(sql),
+    async transaction(work) {
+      db.exec("BEGIN IMMEDIATE");
+      try { await work(adapter); db.exec("COMMIT"); }
+      catch (error) { db.exec("ROLLBACK"); throw error; }
+    },
+  };
+  return adapter;
 }

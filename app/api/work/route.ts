@@ -1,4 +1,4 @@
-﻿import { createHash, pbkdf2, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, pbkdf2, randomBytes, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { users } from "../../data";
 import { getDatabase } from "../../../lib/database";
@@ -34,10 +34,10 @@ async function verify(password: string, encoded: string) {
   const stored = Buffer.from(expected, "hex");
   return stored.length === actual.length && timingSafeEqual(actual, stored);
 }
-function auth(req: Request) {
+async function auth(req: Request) {
   const token = tokenFrom(req);
   if (!token || token.length > 256) return null;
-  const session = getDatabase()
+  const session = await (await getDatabase())
     .prepare("SELECT user FROM sessions WHERE id=? AND expires>?")
     .get(digest(token), Date.now());
   return users.find((user) => user.id === session?.user) || null;
@@ -58,14 +58,13 @@ function validString(value: unknown, max: number): value is string {
 
 export async function GET(req: Request) {
   try {
-    const user = auth(req);
+    const user = await auth(req);
     if (!user) return json({ user: null });
-    const db = getDatabase();
+    const db = await getDatabase();
     const tasks =
       user.role === "director"
-        ? db.prepare("SELECT * FROM tasks ORDER BY updated DESC").all()
-        : db
-            .prepare(
+        ? await db.prepare("SELECT * FROM tasks ORDER BY updated DESC").all()
+        : await db.prepare(
               "SELECT * FROM tasks WHERE department=? ORDER BY updated DESC",
             )
             .all(user.department);
@@ -111,7 +110,7 @@ export async function POST(req: Request) {
     }
     if (!body || typeof body !== "object" || Array.isArray(body))
       return json({ error: "Yêu cầu không hợp lệ." }, 400);
-    const db = getDatabase();
+    const db = await getDatabase();
 
     if (body.action === "login") {
       if (
@@ -126,10 +125,9 @@ export async function POST(req: Request) {
       if (!user)
         return json({ error: "Tên đăng nhập hoặc mật khẩu không đúng." }, 401);
       const now = Date.now();
-      db.prepare("DELETE FROM sessions WHERE expires<=?").run(now);
-      db.prepare("DELETE FROM login_attempts WHERE reset_at<=?").run(now);
-      const attempt = db
-        .prepare("SELECT failures FROM login_attempts WHERE username=?")
+      await db.prepare("DELETE FROM sessions WHERE expires<=?").run(now);
+      await db.prepare("DELETE FROM login_attempts WHERE reset_at<=?").run(now);
+      const attempt = await db.prepare("SELECT failures FROM login_attempts WHERE username=?")
         .get(username);
       if (attempt && Number(attempt.failures) >= 10) {
         return json(
@@ -140,14 +138,13 @@ export async function POST(req: Request) {
           { "Retry-After": "900" },
         );
       }
-      let account = db
-        .prepare("SELECT password FROM accounts WHERE id=?")
+      let account = await db.prepare("SELECT password FROM accounts WHERE id=?")
         .get(user.id);
       let accepted = account
         ? await verify(body.password, String(account.password))
         : body.password === "0000";
       if (!accepted) {
-        db.prepare(
+        await db.prepare(
           `INSERT INTO login_attempts(username,failures,reset_at) VALUES(?,1,?)
           ON CONFLICT(username) DO UPDATE SET failures=failures+1`,
         ).run(username, now + LOGIN_WINDOW_MS);
@@ -155,11 +152,10 @@ export async function POST(req: Request) {
       }
       if (!account) {
         const encoded = await encode("0000");
-        db.prepare(
+        await db.prepare(
           "INSERT OR IGNORE INTO accounts(id,password) VALUES(?,?)",
         ).run(user.id, encoded);
-        account = db
-          .prepare("SELECT password FROM accounts WHERE id=?")
+        account = await db.prepare("SELECT password FROM accounts WHERE id=?")
           .get(user.id);
         // Recheck if another request created or changed the account while hashing.
         accepted =
@@ -170,9 +166,9 @@ export async function POST(req: Request) {
             401,
           );
       }
-      db.prepare("DELETE FROM login_attempts WHERE username=?").run(username);
+      await db.prepare("DELETE FROM login_attempts WHERE username=?").run(username);
       const token = randomBytes(32).toString("hex");
-      db.prepare("INSERT INTO sessions(id,user,expires) VALUES(?,?,?)").run(
+      await db.prepare("INSERT INTO sessions(id,user,expires) VALUES(?,?,?)").run(
         digest(token),
         user.id,
         now + SESSION_MS,
@@ -182,11 +178,11 @@ export async function POST(req: Request) {
       });
     }
 
-    const user = auth(req);
+    const user = await auth(req);
     if (!user) return json({ error: "Vui lòng đăng nhập." }, 401);
 
     if (body.action === "logout") {
-      db.prepare("DELETE FROM sessions WHERE id=?").run(
+      await db.prepare("DELETE FROM sessions WHERE id=?").run(
         digest(tokenFrom(req) || ""),
       );
       return json({ ok: true }, 200, {
@@ -203,24 +199,15 @@ export async function POST(req: Request) {
       ) {
         return json({ error: "Mật khẩu mới cần từ 4 đến 128 ký tự." }, 400);
       }
-      const account = db
-        .prepare("SELECT password FROM accounts WHERE id=?")
+      const account = await db.prepare("SELECT password FROM accounts WHERE id=?")
         .get(user.id);
       if (!account || !(await verify(body.current, String(account.password))))
         return json({ error: "Mật khẩu hiện tại không đúng." }, 400);
       const encoded = await encode(body.next);
-      db.exec("BEGIN IMMEDIATE");
-      try {
-        db.prepare("UPDATE accounts SET password=? WHERE id=?").run(
-          encoded,
-          user.id,
-        );
-        db.prepare("DELETE FROM sessions WHERE user=?").run(user.id);
-        db.exec("COMMIT");
-      } catch (error) {
-        db.exec("ROLLBACK");
-        throw error;
-      }
+      await db.transaction(async (tx) => {
+        await tx.prepare("UPDATE accounts SET password=? WHERE id=?").run(encoded, user.id);
+        await tx.prepare("DELETE FROM sessions WHERE user=?").run(user.id);
+      });
       return json({ ok: true }, 200, {
         "Set-Cookie": sessionCookie(req, "", 0),
       });
@@ -252,8 +239,7 @@ export async function POST(req: Request) {
       if (parentId) {
         if (typeof parentId !== "string")
           return json({ error: "Công việc gốc không hợp lệ." }, 400);
-        const parent = db
-          .prepare("SELECT * FROM tasks WHERE id=?")
+        const parent = await db.prepare("SELECT * FROM tasks WHERE id=?")
           .get(parentId);
         if (
           !parent ||
@@ -263,7 +249,7 @@ export async function POST(req: Request) {
           return json({ error: "Công việc gốc không hợp lệ." }, 403);
         }
       }
-      db.prepare(
+      await db.prepare(
         `INSERT INTO tasks(id,title,content,department,assignee,creator,deadline,progress,priority,parent,note,updated)
         VALUES(?,?,?,?,?,?,?,0,?,?,?,?)`,
       ).run(
@@ -286,7 +272,7 @@ export async function POST(req: Request) {
     if (body.action === "update") {
       if (typeof body.id !== "string")
         return json({ error: "Công việc không hợp lệ." }, 400);
-      const task = db.prepare("SELECT * FROM tasks WHERE id=?").get(body.id);
+      const task = await db.prepare("SELECT * FROM tasks WHERE id=?").get(body.id);
       if (
         !task ||
         (user.role !== "director" &&
@@ -310,17 +296,11 @@ export async function POST(req: Request) {
           400,
         );
       }
-      db.prepare("UPDATE tasks SET progress=?,note=?,updated=? WHERE id=?").run(
-        body.progress,
-        String(body.note || ""),
-        new Date().toISOString(),
+      await db.prepare("UPDATE tasks SET progress=?,note=?,updated=?,completed_quantity=? WHERE id=?").run(
+        body.progress, String(body.note || ""), new Date().toISOString(),
+        body.completedQuantity === undefined ? task.completed_quantity ?? null : body.completedQuantity,
         body.id,
       );
-      if (body.completedQuantity !== undefined) {
-        db.prepare("UPDATE tasks SET completed_quantity=? WHERE id=?").run(
-          body.completedQuantity as number | null, body.id,
-        );
-      }
       return json({ ok: true });
     }
     return json({ error: "Thao tác không hợp lệ." }, 400);

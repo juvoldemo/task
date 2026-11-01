@@ -194,3 +194,29 @@ Font Be Vietnam Pro tải từ Google Fonts; nếu máy không có Internet sẽ
 
 Tài liệu nền tảng: [Next.js self-hosting](https://nextjs.org/docs/app/guides/self-hosting), [Node.js SQLite](https://nodejs.org/docs/latest-v24.x/api/sqlite.html).
 
+
+## Supabase + Vercel
+
+The server supports Supabase PostgreSQL through `SUPABASE_DATABASE_URL`. Without this
+variable, local development continues to use SQLite. On Vercel the variable is required.
+
+1. In Supabase, open **Connect > Transaction pooler** and copy the PostgreSQL URI
+   (port 6543). Replace the password placeholder; URL-encode special characters.
+2. Add `SUPABASE_DATABASE_URL` to `.env.local`. Use TLS (`sslmode=verify-full`);
+   if certificate validation requires the project CA, configure that trusted CA rather
+   than disabling verification. Never prefix the variable with `NEXT_PUBLIC_`.
+3. Run `npm run db:setup` once to create the private `teamflow` schema. Alternatively,
+   run `supabase/schema.sql` in Supabase SQL Editor. This preserves existing tables.
+4. If moving local records, run `npm run db:migrate`. Existing remote records are
+   preserved; passwords retain their hashes. Sessions are not copied; sign in again.
+   Keep the original SQLite database as your backup.
+5. In Vercel, add `SUPABASE_DATABASE_URL` and set `APP_URL` to the exact production
+   origin (for example `https://task-ivory-one.vercel.app`), then redeploy.
+
+Database credentials stay on the server. The private schema is not exposed through
+Supabase Data API; RLS is enabled with no public policies. Existing application login,
+password hashing, session cookies, department permissions and rate limiting remain in use.
+This uses Supabase Database, not Supabase Auth. Keep the schema out of exposed API schemas.
+
+`npm run backup` backs up local SQLite only. For Supabase, use PostgreSQL backups or
+Supabase dashboard backups appropriate to your plan.
