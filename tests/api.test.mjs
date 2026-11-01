@@ -111,7 +111,7 @@ test("TeamFlow: standalone, authentication, authorization and persistence", asyn
       );
       const page = await fetch(base);
       assert.equal(page.status, 200);
-      assert.match(await page.text(), /TeamFlow/);
+      assert.match(await page.text(), /Bảo Việt Nhân thọ/);
       const roster = (await get(director)).users;
       assert.equal(roster.length, 19);
       assert.equal(new Set(roster.map((p) => p.id)).size, 19);
@@ -215,6 +215,24 @@ test("TeamFlow: standalone, authentication, authorization and persistence", asyn
         assert.equal((await get(director)).tasks.length, 8);
       },
     );
+    await t.test("Notifications are scoped by recipient and reading is private", async () => {
+      const company = await get(director);
+      assert(company.notifications.length >= 8);
+      for (let i = 0; i < 4; i++) {
+        const manager = await get(managers[i]);
+        assert(manager.notifications.length >= 2);
+        assert(manager.notifications.every(item => manager.tasks.some(task => task.id === item.task_id)));
+        const member = await get(members[i]);
+        assert.equal(member.notifications.length, 1);
+        assert(member.notifications.every(item => member.tasks.find(task => task.id === item.task_id)?.assignee === pairs[i][1]));
+        const id = member.notifications[0].id;
+        assert.equal((await post({ action: "readNotifications", ids: [id] }, members[(i + 1) % 4])).status, 200);
+        assert.equal((await get(members[i])).unreadNotifications, 1);
+        assert.equal((await post({ action: "readNotifications", ids: [id] }, members[i])).status, 200);
+        assert.equal((await get(members[i])).unreadNotifications, 0);
+        assert((await get(members[i])).notifications[0].read_at);
+      }
+    });
     await t.test("Enforce role and validate request data", async () => {
       const task = {
         action: "create",

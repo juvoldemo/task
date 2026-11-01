@@ -1,7 +1,7 @@
 import { createHash, pbkdf2, randomBytes, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { users } from "../../data";
-import { getDatabase } from "../../../lib/database";
+import { getDatabase, type Store } from "../../../lib/database";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,6 +56,18 @@ function validString(value: unknown, max: number): value is string {
   );
 }
 
+async function notify(db: Store, actor: typeof users[number], task: Record<string, any>, message: string) {
+  const recipients = users.filter(person => person.id !== actor.id && (
+    person.role === "director" ||
+    (person.role === "manager" && person.department === task.department) ||
+    person.id === task.assignee
+  ));
+  for (const person of recipients) {
+    await db.prepare("INSERT INTO notifications(id,recipient,task_id,message,created) VALUES(?,?,?,?,?)")
+      .run(crypto.randomUUID(), person.id, task.id, message, new Date().toISOString());
+  }
+}
+
 export async function GET(req: Request) {
   try {
     const user = await auth(req);
@@ -75,6 +87,8 @@ export async function GET(req: Request) {
           ? users
           : users.filter((p) => p.department === user.department),
       tasks,
+      notifications: await db.prepare("SELECT * FROM notifications WHERE recipient=? ORDER BY created DESC LIMIT 100").all(user.id),
+      unreadNotifications: (await db.prepare("SELECT COUNT(*) AS count FROM notifications WHERE recipient=? AND read_at IS NULL").get(user.id))?.count || 0,
     });
   } catch (error) {
     console.error("GET /api/work failed", error);
@@ -180,6 +194,11 @@ export async function POST(req: Request) {
 
     const user = await auth(req);
     if (!user) return json({ error: "Vui lòng đăng nhập." }, 401);
+    if (body.action === "readNotifications") {
+      if (!Array.isArray(body.ids) || body.ids.length > 100 || !body.ids.every(id => typeof id === "string")) return json({ error: "Thông báo không hợp lệ." }, 400);
+      for (const id of body.ids) await db.prepare("UPDATE notifications SET read_at=? WHERE id=? AND recipient=? AND read_at IS NULL").run(new Date().toISOString(), id, user.id);
+      return json({ ok: true });
+    }
 
     if (body.action === "logout") {
       await db.prepare("DELETE FROM sessions WHERE id=?").run(
@@ -236,6 +255,7 @@ export async function POST(req: Request) {
         );
       }
       const parentId = body.parent || null;
+      let taskTitle = body.title.trim();
       if (parentId) {
         if (typeof parentId !== "string")
           return json({ error: "Công việc gốc không hợp lệ." }, 400);
@@ -248,18 +268,21 @@ export async function POST(req: Request) {
         ) {
           return json({ error: "Công việc gốc không hợp lệ." }, 403);
         }
+        taskTitle = String(parent.title);
       }
-      await db.prepare(
+      const taskId = crypto.randomUUID();
+      await db.transaction(async transaction => {
+      await transaction.prepare(
         `INSERT INTO tasks(id,title,content,department,assignee,creator,deadline,progress,priority,parent,note,updated)
         VALUES(?,?,?,?,?,?,?,0,?,?,?,?)`,
       ).run(
-        crypto.randomUUID(),
-        body.title.trim(),
-        body.content.trim(),
+        taskId,
+        taskTitle,
+        String(body.content).trim(),
         target.department,
         target.id,
         user.id,
-        new Date(body.deadline).toISOString(),
+        new Date(String(body.deadline)).toISOString(),
         ["Cao", "Bình thường", "Thấp"].includes(String(body.priority))
           ? String(body.priority)
           : "Bình thường",
@@ -267,6 +290,8 @@ export async function POST(req: Request) {
         "",
         new Date().toISOString(),
       );
+      await notify(transaction, user, { id: taskId, department: target.department, assignee: target.id }, `${user.name} ${parentId ? "phân công tiếp" : "giao công việc"} “${taskTitle}” cho ${target.name}.`);
+      });
       return json({ ok: true });
     }
     if (body.action === "update") {
@@ -296,11 +321,18 @@ export async function POST(req: Request) {
           400,
         );
       }
-      await db.prepare("UPDATE tasks SET progress=?,note=?,updated=?,completed_quantity=? WHERE id=?").run(
+      await db.transaction(async transaction => {
+      await transaction.prepare("UPDATE tasks SET progress=?,note=?,updated=?,completed_quantity=? WHERE id=?").run(
         body.progress, String(body.note || ""), new Date().toISOString(),
         body.completedQuantity === undefined ? task.completed_quantity ?? null : body.completedQuantity,
         body.id,
       );
+      const changes: string[] = [];
+      if (body.progress !== task.progress) changes.push(body.progress === 100 ? "đã hoàn thành" : "cập nhật trạng thái");
+      if (body.completedQuantity !== undefined && body.completedQuantity !== (task.completed_quantity ?? null)) changes.push(`số lượng hoàn thành: ${body.completedQuantity ?? "chưa nhập"}`);
+      if (String(body.note || "") !== task.note) changes.push(`ghi chú: ${String(body.note || "đã xóa ghi chú")}`);
+      if (changes.length) await notify(transaction, user, task, `${user.name} cập nhật “${task.title}”: ${changes.join("; ")}.`);
+      });
       return json({ ok: true });
     }
     return json({ error: "Thao tác không hợp lệ." }, 400);

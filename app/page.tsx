@@ -2,6 +2,11 @@
 import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
+  House,
+  ClipboardList,
+  Info,
+  Eye,
+  EyeOff,
   ListTodo,
   Users,
   Building2,
@@ -13,18 +18,21 @@ import {
   KeyRound,
   CheckCheck,
   Clock,
-  AlertCircle,
-  Layers,
+  CornerDownRight,
+  ArrowDown,
   CalendarDays,
+  AlertCircle,
   X,
   ArrowRight,
   ShieldCheck,
   SlidersHorizontal,
-  Globe2,
   TrendingUp,
   FileCheck2,
 } from "lucide-react";
 import { departments } from "./data";
+import DatePicker from "./date-picker";
+import PriorityPicker from "./priority-picker";
+import Notifications from "./notifications";
 const initials = (n: string) =>
   n
     .split(" ")
@@ -39,6 +47,13 @@ const date = (s: string) =>
     hour: "2-digit",
     minute: "2-digit",
   });
+const deadlineDate = (s: string) =>
+  new Date(s).toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Asia/Ho_Chi_Minh",
+  });
 const late = (t: any) => t.progress < 100 && new Date(t.deadline) < new Date();
 export default function Home() {
   const [data, setData] = useState<any>(null),
@@ -49,6 +64,9 @@ export default function Home() {
     [modal, setModal] = useState<any>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
+    [createParent, setCreateParent] = useState(""),
+    [createTitle, setCreateTitle] = useState(""),
+    [showPassword, setShowPassword] = useState(false),
     [toast, setToast] = useState("");
   const load = async () => {
     try {
@@ -64,7 +82,7 @@ export default function Home() {
     load();
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") load();
-    }, 30000);
+    }, 10000);
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
@@ -118,22 +136,53 @@ export default function Home() {
             ? late(t)
             : t.progress < 100)),
   );
-  const done = all.filter((t: any) => t.progress === 100).length,
-    overdue = all.filter(late).length,
-    avg = all.length
+  const myTasks = all.filter((task: any) => task.assignee === u?.id && task.progress < 100);
+  const taskById = new Map<string, any>(all.map((task: any) => [task.id, task]));
+  const rootId = (task: any) => {
+    const seen = new Set<string>();
+    while (task.parent && taskById.has(task.parent) && !seen.has(task.id)) {
+      seen.add(task.id);
+      task = taskById.get(task.parent);
+    }
+    return task.parent && !taskById.has(task.parent) ? task.parent : task.id;
+  };
+  const rootTasks = Array.from(new Map<string, any>(all.map((task: any) => {
+    const id = rootId(task);
+    return [id, taskById.get(id) || task];
+  })).values());
+  const taskCount = rootTasks.length;
+  const filteredTaskCount = new Set(tasks.map(rootId)).size;
+  const done = rootTasks.filter((t: any) => t.progress === 100).length,
+    overdue = rootTasks.filter(late).length,
+    avg = taskCount
       ? Math.round(
-          done * 100 / all.length,
+          done * 100 / taskCount,
         )
       : 0;
+  const orderedTasks: { task: any; depth: number }[] = [];
+  const visibleIds = new Set(tasks.map((task: any) => task.id));
+  const visited = new Set<string>();
+  const appendTask = (task: any, depth: number) => {
+    if (visited.has(task.id)) return;
+    visited.add(task.id);
+    orderedTasks.push({ task, depth });
+    tasks.filter((child: any) => child.parent === task.id).forEach((child: any) => appendTask(child, depth + 1));
+  };
+  tasks.filter((task: any) => !task.parent || !visibleIds.has(task.parent)).forEach((task: any) => appendTask(task, 0));
+  tasks.forEach((task: any) => appendTask(task, 0));
   const open = (m: any) => {
     setError("");
+    if (m.type === "create") {
+      setCreateParent(m.parent || "");
+      setCreateTitle(all.find((task: any) => task.id === m.parent)?.title || "");
+    }
     setModal(m);
   };
   if (!data)
     return (
       <div className="loading">
         <div className="brand">
-          <Layers /> TeamFlow
+          <img className="brand-logo" src="/logo.webp" alt="Bảo Việt Nhân thọ" width={1200} height={382} />
         </div>
         <p>{error || "Đang kết nối không gian làm việc…"}</p>
         {error && <button onClick={load}>Thử lại</button>}
@@ -141,14 +190,15 @@ export default function Home() {
     );
   if (!u)
     return (
-      <div className="login">
+      <div className="login login-reference">
+        <div className="login-topbar">
+          <div className="brand"><img className="brand-logo" src="/logo.webp" alt="Bảo Việt Nhân thọ" width={1200} height={382} /></div>
+          <span>Không gian điều hành nội bộ</span>
+        </div>
         <section className="login-story">
-          <div className="brand">
-            <span className="brand-name">BAOVIET<small>Nhân thọ</small></span><Globe2 className="brand-globe" />
-          </div>
           <div className="story-text">
             <div className="eyebrow">
-              CÙNG MỘT MỤC TIÊU. CÙNG MỘT NHỊP TIẾN.
+              CÙNG MỘT MỤC TIÊU
             </div>
             <h1>
               Công việc rõ ràng.
@@ -156,32 +206,15 @@ export default function Home() {
               Đội ngũ vững vàng.
             </h1>
             <p>
-              Một không gian để giao việc, kết nối đội ngũ và biến kế hoạch
-              thành kết quả.
+              Một không gian để giao việc, kết nối đội ngũ<br className="story-break" /> và theo dõi tiến độ.
             </p>
-            <div className="story-panel">
-              <div className="story-circle">✓</div>
-              <div>
-                <b>Mỗi công việc, một bước tiến</b>
-                <p>Giao đúng người · Theo dõi đúng lúc</p>
-              </div>
-              <ArrowUpRight />
-            </div>
-            <div className="decor-bars">
-              {[35, 48, 43, 65, 58, 77, 70, 90, 83, 100].map((h, i) => (
-                <i key={i} style={{ height: h + "%" }} />
-              ))}
-            </div>
+            <div className="login-counts"><span><b>19</b> cán bộ</span><span><b>4</b> phòng ban</span></div>
           </div>
-          <small>
-            KHÔNG GIAN ĐIỀU HÀNH NỘI BỘ{" "}
-            <span>© {new Date().getFullYear()} TeamFlow</span>
-          </small>
         </section>
         <section className="login-form">
           <div className="login-box">
             <div className="secure">
-              <ShieldCheck size={16} /> KHÔNG GIAN LÀM VIỆC BẢO MẬT
+              <ShieldCheck size={23} /> ĐĂNG NHẬP NỘI BỘ
             </div>
             <h2>Chào mừng trở lại</h2>
             <p>Đăng nhập để bắt đầu ngày làm việc của bạn.</p>
@@ -200,55 +233,47 @@ export default function Home() {
                 Tên đăng nhập
                 <input
                   name="username"
-                  placeholder="Ví dụ: nguyenthoc"
+                  placeholder="Nhập tên đăng nhập"
                   autoComplete="username"
+                  aria-describedby="username-hint"
                   required
                 />
+                <small id="username-hint">Họ tên viết liền, không dấu.</small>
               </label>
               <label>
                 Mật khẩu
-                <input
+                <div className="password-field"><input
                   name="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   placeholder="Nhập mật khẩu"
                   autoComplete="current-password"
                   required
-                />
+                /><button type="button" className="password-visibility" aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"} aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff size={24} /> : <Eye size={24} />}</button></div>
               </label>
               {error && <div className="error">{error}</div>}
               <button className="primary wide" disabled={busy}>
                 {busy ? "Đang đăng nhập…" : "Đăng nhập"}
-                <ArrowRight size={18} />
               </button>
             </form>
             <div className="login-hint">
-              <KeyRound size={18} />
-              <div>
-                Tài khoản là họ tên viết liền, không dấu.
-                <br />
-                <span>
-                  Mật khẩu mặc định: <b>0000</b>. Bạn có thể đổi sau khi đăng
-                  nhập.
-                </span>
-              </div>
+              <KeyRound size={24} />
+              <span>Sử dụng tài khoản nội bộ được cấp.</span>
             </div>
-            <footer>
-              19 cán bộ <i /> 4 phòng ban <i /> Một không gian chung
-            </footer>
           </div>
         </section>
+        <footer className="login-bottom"><img className="brand-logo" src="/logo.webp" alt="Bảo Việt Nhân thọ" width={1200} height={382} /><small>© {new Date().getFullYear()} · Không gian làm việc nội bộ</small></footer>
       </div>
     );
   return (
     <div className="app">
-      <div className="corporate-bar"><div className="corporate-account"><span className="avatar">{initials(u.name)}</span><div><b>{u.name}</b><small>{u.position}</small></div></div></div>
+      <div className="corporate-bar"><div className="corporate-account"><Notifications items={data.notifications || []} unread={Number(data.unreadNotifications || 0)} onRefresh={load} onTask={id => { const task = all.find((task: any) => task.id === id); if (task) open({ type: "detail", task }); }} /><span className="avatar">{initials(u.name)}</span><div><b>{u.name}</b><small>{u.position}</small></div></div></div>
       <aside>
         <div className="brand">
-          <span className="brand-name">BAOVIET<small>Nhân thọ</small></span><Globe2 className="brand-globe" />
+          <img className="brand-logo" src="/logo.webp" alt="Bảo Việt Nhân thọ" width={1200} height={382} />
         </div>
         <nav>
           {[
-            ["dashboard", "Tổng quan", LayoutDashboard],
+            ["dashboard", "Tổng quan", House],
             ["tasks", "Công việc", ListTodo],
             ["departments", "Phòng ban", Building2],
             ["people", "Đội ngũ", Users],
@@ -266,25 +291,19 @@ export default function Home() {
               >
                 <Icon size={19} />
                 {label}
-                {id === "tasks" && <em>{all.length}</em>}
+                {id === "tasks" && <em>{taskCount}</em>}
               </button>
             ))}
         </nav>
-        <div className="sidebar-scene"><span>Vững niềm tin<br />Trọn tương lai</span></div>
-        <div className="profile">
-          <div className="avatar">{initials(u.name)}</div>
-          <div>
-            <b>{u.name}</b>
-            <small>{u.position}</small>
-          </div>
-          <button title="Đăng xuất" onClick={() => act({ action: "logout" })}>
-            <LogOut size={17} />
-          </button>
+        <div className="sidebar-actions">
+          <button onClick={() => open({ type: "password" })}><KeyRound size={22} /><span>Đổi mật khẩu</span></button>
+          <button onClick={() => act({ action: "logout" })}><LogOut size={22} /><span>Đăng xuất</span></button>
         </div>
       </aside>
       <main>
         <header>
-          <div>
+          <div className="breadcrumb">
+            <span>Không gian làm việc</span><span>/</span>
             <b>
               {
                 (
@@ -298,22 +317,12 @@ export default function Home() {
               }
             </b>
           </div>
-          <div className="header-right">
-            <span className="live-dot" /> Dữ liệu trực tuyến
-            <button onClick={() => open({ type: "password" })}>
-              <KeyRound size={15} /> Đổi mật khẩu
-            </button>
-            <div className="avatar small">{initials(u.name)}</div>
-          </div>
         </header>
         <div className={`content ${page}-content`}>
           <div className="page-title">
             <div>
-              <div className="eyebrow">
-                {u.role === "director"
-                  ? "BẢNG ĐIỀU HÀNH GIÁM ĐỐC"
-                  : departments[u.department].toUpperCase()}
-              </div>
+              {u.role !== "director" && <div className="eyebrow">{departments[u.department].toUpperCase()}</div>}
+              {page === "dashboard" && <><h1>Tổng quan</h1><p className="department-subtitle">{u.role === "director" ? "Toàn công ty" : departments[u.department]}</p></>}
               {page !== "dashboard" && <h1>
                 {page === "tasks"
                     ? "Quản lý công việc"
@@ -322,11 +331,7 @@ export default function Home() {
                       : "Đội ngũ của bạn"}
                 <span className="title-dot">.</span>
               </h1>}
-              {page !== "dashboard" && page !== "tasks" && <p>
-                {page === "departments"
-                      ? "Bức tranh tiến độ của từng phòng ban."
-                      : "Thông tin cán bộ và tài khoản đăng nhập."}
-              </p>}
+              {page === "departments" && <p>Bức tranh tiến độ của từng phòng ban.</p>}
             </div>
             {["director", "manager"].includes(u.role) && (
               <button
@@ -339,36 +344,19 @@ export default function Home() {
           </div>
           {page === "dashboard" && (
             <>
-              <div className="date-strip">
-                <span>
-                  <CalendarDays size={16} />
-                  {new Date().toLocaleDateString("vi-VN", {
-                    weekday: "long",
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  })}
-                </span>
-                <span>
-                  {u.role === "director"
-                    ? "Toàn công ty"
-                    : departments[u.department]}{" "}
-                  <span className="tiny-dot" /> Tổng quan hiện tại
-                </span>
-              </div>
               <div className="stats">
                 {[
                   [
-                    Layers,
+                    ClipboardList,
                     "Tổng công việc",
-                    all.length,
+                    taskCount,
                     "Tất cả nhiệm vụ đang quản lý",
                     "purple",
                   ],
                   [
                     Clock,
                     "Đang thực hiện",
-                    all.length - done,
+                    taskCount - done,
                     "Công việc chưa hoàn thành",
                     "blue",
                   ],
@@ -376,7 +364,7 @@ export default function Home() {
                     CheckCheck,
                     "Đã hoàn thành",
                     done,
-                    "Những cột mốc đã chinh phục",
+                    "Những công việc đã hoàn thành",
                     "green",
                   ],
                   [
@@ -407,7 +395,7 @@ export default function Home() {
                       <span>{label}</span>
                       <Icon size={19} />
                     </div>
-                    <strong>{value.toString().padStart(2, "0")}</strong>
+                    <strong>{value}</strong>
                     <small>
                       {sub}
                       <ArrowUpRight size={14} />
@@ -415,6 +403,20 @@ export default function Home() {
                   </button>
                 ))}
               </div>
+              <section className="panel my-tasks-panel">
+                <div className="panel-heading">
+                  <div><h3>Công việc của tôi <span className="count">{myTasks.length}</span></h3></div>
+                </div>
+                {myTasks.length ? <div className="my-task-list">{myTasks.map((task: any) => (
+                  <button key={task.id} type="button" className="my-task-row" onClick={() => open({ type: "detail", task })}>
+                    <span className="my-task-icon"><ClipboardList size={22} /></span>
+                    <span className="my-task-body"><strong>{task.title}</strong><small>Người giao: {name(task.creator)} · Hạn: <span className={late(task) ? "danger" : ""}>{deadlineDate(task.deadline)}</span></small></span>
+                    <span className="priority-badge" data-priority={task.priority}>{task.priority}</span>
+                    <span className={`badge ${late(task) ? "overdue" : task.progress > 0 ? "working" : "waiting"}`}>{late(task) ? "Quá hạn" : task.progress > 0 ? "Đang thực hiện" : "Chưa bắt đầu"}</span>
+                    <ChevronRight size={18} />
+                  </button>
+                ))}</div> : <p className="my-tasks-empty">Bạn không có công việc nào chưa hoàn thành.</p>}
+              </section>
               <div className="dashboard-grid">
                 <section className="panel department-panel">
                   <div className="panel-heading">
@@ -434,7 +436,7 @@ export default function Home() {
                         )
                       }
                     >
-                      Xem tất cả <ArrowUpRight size={15} />
+                      Xem tất cả <ArrowRight size={19} />
                     </button>
                   </div>
                   {(u.role === "director"
@@ -442,7 +444,7 @@ export default function Home() {
                     : [departments[u.department]]
                   ).map((d, i) => {
                     const di = departments.indexOf(d),
-                      ts = all.filter((t: any) => t.department === di),
+                      ts = rootTasks.filter((t: any) => t.department === di),
                       p = ts.length
                         ? Math.round(
                             ts.reduce(
@@ -493,48 +495,37 @@ export default function Home() {
                       </button>
                     );
                   })}
+                  {!all.length && <div className="overview-empty"><h3>Chưa có công việc được giao</h3><p>Giao công việc đầu tiên để bắt đầu theo dõi tiến độ.</p>{["director", "manager"].includes(u.role) && <button className="secondary" onClick={() => open({ type: "create" })}>Giao công việc</button>}</div>}
                 </section>
                 <section className="panel progress-panel">
                   <div className="panel-heading">
                     <div>
                       <h3>Hiệu suất tổng thể</h3>
-                      <p>Tỷ lệ công việc đã hoàn thành</p>
+                      <p>Tình trạng công việc của {u.role === "director" ? "công ty" : "phòng"}</p>
                     </div>
                     <span className="purple-tag">
                       {u.role === "director" ? "Toàn công ty" : "Phòng của bạn"}
                     </span>
                   </div>
-                  <div
-                    className="donut"
-                    style={{
-                      background: `conic-gradient(#0083ff ${avg}%,#e6ebf3 0)`,
-                    }}
-                  >
-                    <div>
-                      <strong>
-                        {avg}
-                        <span>%</span>
-                      </strong>
-                      <small>Tỷ lệ hoàn thành</small>
-                    </div>
-                  </div>
+                  <div className="completion-summary"><p>Tỷ lệ hoàn thành</p><strong>{avg}<span>%</span></strong><div className="track"><i style={{ width: `${avg}%` }} /></div></div>
                   <div className="legend">
                     <span>
-                      <i style={{ background: "#0083ff" }} /> Đã hoàn thành{" "}
+                      <i style={{ background: "#10b975" }} /> Đã hoàn thành{" "}
                       <b>{done}</b>
                     </span>
                     <span>
-                      <i style={{ background: "#e6ebf3" }} /> Chưa hoàn thành{" "}
-                      <b>{all.filter((t: any) => t.progress === 0 && !late(t)).length}</b>
+                      <i style={{ background: "#9daec5" }} /> Chưa bắt đầu{" "}
+                      <b>{rootTasks.filter((t: any) => t.progress === 0 && !late(t)).length}</b>
                     </span>
-                    <span><i style={{ background: "#ffbd23" }} /> Đang thực hiện <b>{all.filter((t: any) => t.progress > 0 && t.progress < 100 && !late(t)).length}</b></span>
+                    <span><i style={{ background: "#ffbd23" }} /> Đang thực hiện <b>{rootTasks.filter((t: any) => t.progress > 0 && t.progress < 100 && !late(t)).length}</b></span>
                     <span><i style={{ background: "#ff4939" }} /> Quá hạn <b>{overdue}</b></span>
                   </div>
+                  {!all.length && <p className="performance-note"><Info size={21} />Chưa có dữ liệu để thống kê hiệu suất.</p>}
                 </section>
               </div>
             </>
           )}
-          {(page === "tasks" || page === "dashboard") && (
+          {(page === "tasks" || (page === "dashboard" && all.length > 0)) && (
             <section className="panel tasks-panel">
               <div className="panel-heading">
                 <div>
@@ -542,7 +533,7 @@ export default function Home() {
                     {page === "dashboard"
                       ? "Công việc cần theo dõi"
                       : "Danh sách công việc"}{" "}
-                    <span className="count">{tasks.length}</span>
+                    <span className="count">{filteredTaskCount}</span>
                   </h3>
                   {page === "dashboard" && (
                     <p>Cập nhật tiến độ để đội ngũ luôn đồng bộ</p>
@@ -601,18 +592,22 @@ export default function Home() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(page === "dashboard" ? tasks.slice(0, 5) : tasks).map(
-                      (t: any) => (
+                    {(page === "dashboard" ? orderedTasks.slice(0, 5) : orderedTasks).map(
+                      ({ task: t, depth }) => (
                         <tr
                           key={t.id}
                           onClick={() => open({ type: "detail", task: t })}
                         >
                           <td>
+                            <div className="task-tree-title" style={{ paddingLeft: Math.min(depth, 5) * 24 }}>
+                            {t.parent && <CornerDownRight className="task-child-arrow" size={21} aria-label="Công việc được giao tiếp" />}
                             <b>{t.title}</b>
+                            {!t.parent && tasks.some((child: any) => child.parent === t.id) && <ArrowDown className="task-parent-arrow" size={18} aria-label="Có công việc con bên dưới" />}
+                            </div>
                             <small>
                               {departments[t.department]}
                               {t.parent
-                                ? " · Công việc được phân công lại"
+                                ? ` · ${name(t.creator)} giao cho ${name(t.assignee)}`
                                 : ""}
                             </small>
                           </td>
@@ -625,7 +620,7 @@ export default function Home() {
                             </div>
                           </td>
                           <td className={late(t) ? "danger" : ""}>
-                            {date(t.deadline)}
+                            {deadlineDate(t.deadline)}
                           </td>
                           <td>
                             <div className="progress-cell">
@@ -693,7 +688,7 @@ export default function Home() {
           {page === "departments" && (
             <div className="department-cards">
               {departments.map((d, i) => {
-                const ts = all.filter((t: any) => t.department === i),
+                const ts = rootTasks.filter((t: any) => t.department === i),
                   ps = people.filter((p: any) => p.department === i);
                 return (
                   <section className="panel department-card" key={d}>
@@ -735,15 +730,6 @@ export default function Home() {
           )}
           {page === "people" && (
             <section className="panel">
-              <div className="panel-heading">
-                <div>
-                  <h3>
-                    Danh sách cán bộ{" "}
-                    <span className="count">{people.length}</span>
-                  </h3>
-                  <p>Tài khoản là họ và tên viết liền, không dấu</p>
-                </div>
-              </div>
               <div className="table-scroll">
                 <table>
                   <thead>
@@ -751,12 +737,14 @@ export default function Home() {
                       <th>HỌ VÀ TÊN</th>
                       <th>CHỨC DANH</th>
                       <th>PHÒNG BAN</th>
-                      <th>TÊN ĐĂNG NHẬP</th>
+                      <th>ĐANG NHẬN</th>
+                      <th>ĐÃ HOÀN THÀNH</th>
+                      <th>TRỄ HẠN</th>
                     </tr>
                   </thead>
                   <tbody>
                     {people.map((p: any) => (
-                      <tr key={p.id}>
+                      <tr key={p.id} className="people-department-row" data-department={p.department}>
                         <td>
                           <div className="person-cell">
                             <span className="avatar">{initials(p.name)}</span>
@@ -766,7 +754,13 @@ export default function Home() {
                         <td>{p.position}</td>
                         <td>{departments[p.department] || "Ban giám đốc"}</td>
                         <td>
-                          <code>{p.id}</code>
+                          <span className="active-task-count">{all.filter((task: any) => task.assignee === p.id && task.progress < 100).length}</span>
+                        </td>
+                        <td>
+                          <span className="completed-task-count">{all.filter((task: any) => task.assignee === p.id && task.progress === 100).length}</span>
+                        </td>
+                        <td>
+                          <span className="overdue-task-count">{all.filter((task: any) => task.assignee === p.id && late(task)).length}</span>
                         </td>
                       </tr>
                     ))}
@@ -792,7 +786,7 @@ export default function Home() {
       )}
       {modal && (
         <div className="overlay" onClick={() => !busy && setModal(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className={`modal ${modal.task ? "task-detail-modal" : modal.type === "create" ? "task-create-modal" : ""}`} onClick={(e) => e.stopPropagation()}>
             <button
               className="close"
               aria-label="Đóng"
@@ -800,13 +794,14 @@ export default function Home() {
             >
               <X size={21} />
             </button>
-            <div className="eyebrow">TEAMFLOW WORKSPACE</div>
+            {modal.type === "password" && <div className="eyebrow">TEAMFLOW WORKSPACE</div>}
             <h2>
               {modal.type === "create"
                 ? "Giao công việc mới"
                 : modal.type === "password"
                   ? "Thay đổi mật khẩu"
-                  : "Chi tiết công việc"}
+                  : "Cập nhật tiến độ"}
+              {modal.task && <span className="detail-heading-department">{departments[modal.task.department]}</span>}
             </h2>
             {modal.type === "password" ? (
               <form
@@ -864,26 +859,28 @@ export default function Home() {
                 onSubmit={(e) => {
                   e.preventDefault();
                   const f = new FormData(e.currentTarget);
+                  if (!f.get("deadline")) {
+                    setError("Vui lòng chọn hạn hoàn thành.");
+                    return;
+                  }
                   act({
                     action: "create",
                     title: f.get("title"),
                     content: f.get("content"),
                     assignee: f.get("assignee"),
-                    deadline: new Date(String(f.get("deadline"))).toISOString(),
+                    deadline: new Date(`${f.get("deadline")}T23:59:59.999+07:00`).toISOString(),
                     priority: f.get("priority"),
                     parent: f.get("parent"),
                   });
                 }}
               >
-                <p>
-                  {u.role === "director"
-                    ? "Giao nhiệm vụ cho trưởng phòng phụ trách."
-                    : "Phân công nhiệm vụ cho cán bộ trong phòng."}
-                </p>
                 <label>
                   Tên công việc
                   <input
                     name="title"
+                    value={createTitle}
+                    readOnly={Boolean(createParent)}
+                    onChange={event => setCreateTitle(event.target.value)}
                     maxLength={200}
                     placeholder="Cần thực hiện công việc gì?"
                     required
@@ -922,23 +919,20 @@ export default function Home() {
                   </select>
                 </label>
                 <div className="form-row">
-                  <label>
-                    Hạn hoàn thành
-                    <input type="datetime-local" name="deadline" required />
-                  </label>
-                  <label>
-                    Độ ưu tiên
-                    <select name="priority">
-                      <option>Bình thường</option>
-                      <option>Cao</option>
-                      <option>Thấp</option>
-                    </select>
-                  </label>
+                  <div className="deadline-field">
+                    <span>Hạn hoàn thành</span>
+                    <DatePicker />
+                  </div>
+                  <div className="deadline-field"><span>Độ ưu tiên</span><PriorityPicker /></div>
                 </div>
                 {u.role === "manager" && (
                   <label>
                     Thuộc công việc được giám đốc giao
-                    <select name="parent" defaultValue={modal.parent || ""}>
+                    <select name="parent" value={createParent} onChange={event => {
+                      const parent = event.target.value;
+                      setCreateParent(parent);
+                      setCreateTitle(all.find((task: any) => task.id === parent)?.title || "");
+                    }}>
                       <option value="">Công việc độc lập</option>
                       {all
                         .filter((t: any) => t.assignee === u.id)
@@ -951,18 +945,18 @@ export default function Home() {
                   </label>
                 )}
                 {error && <div className="error">{error}</div>}
-                <button className="primary wide" disabled={busy}>
+                <div className="task-create-footer">
+                <button type="button" className="secondary" disabled={busy} onClick={() => setModal(null)}>Hủy</button>
+                <button className="primary" disabled={busy}>
                   {busy ? "Đang lưu…" : "Giao công việc"}
                   <ArrowRight size={17} />
                 </button>
+                </div>
               </form>
             ) : (
               <>
                 <h3 className="detail-title">{modal.task.title}</h3>
-                <span className="purple-tag">
-                  {departments[modal.task.department]}
-                </span>
-                <p className="description">{modal.task.content}</p>
+                <div className="task-requirement"><span>NỘI DUNG YÊU CẦU</span><p>{modal.task.content}</p></div>
                 <div className="detail-meta">
                   <span>
                     Người phụ trách<b>{name(modal.task.assignee)}</b>
@@ -970,14 +964,15 @@ export default function Home() {
                   <span>
                     Hạn hoàn thành
                     <b className={late(modal.task) ? "danger" : ""}>
-                      {date(modal.task.deadline)}
+                      <CalendarDays size={21} />
+                      {deadlineDate(modal.task.deadline)}
                     </b>
                   </span>
                   <span>
                     Người giao<b>{name(modal.task.creator)}</b>
                   </span>
                   <span>
-                    Độ ưu tiên<b>{modal.task.priority}</b>
+                    Độ ưu tiên<b><span className="priority-badge" data-priority={modal.task.priority}>{modal.task.priority}</span></b>
                   </span>
                 </div>
                 {modal.task.parent && (
@@ -1017,11 +1012,12 @@ export default function Home() {
                     }}
                   >
                     <label>
-                      Số lượng hoàn thành (không bắt buộc)
+                      <span>Số lượng hoàn thành <span className="optional-label">(không bắt buộc)</span></span>
                       <input
-                        type="number"
-                        min="0"
-                        step="1"
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        title="Nhập số nguyên không âm"
                         name="quantity"
                         defaultValue={modal.task.completed_quantity ?? ""}
                         placeholder="Nhập số lượng, ví dụ: 297"
@@ -1029,7 +1025,7 @@ export default function Home() {
                     </label>
                     <label className="completion-toggle">
                       <input type="checkbox" name="completed" defaultChecked={modal.task.progress === 100} />
-                      Đã hoàn thành công việc
+                      Đánh dấu công việc đã hoàn thành
                     </label>
                     <label>
                       Cập nhật / ghi chú
@@ -1042,7 +1038,9 @@ export default function Home() {
                       />
                     </label>
                     {error && <div className="error">{error}</div>}
-                    <div className="form-row">
+                    <div className="task-detail-footer">
+                      <small className="muted">Cập nhật lần cuối: {date(modal.task.updated)}</small>
+                      <div className="task-detail-actions">
                       {u.role === "manager" && modal.task.assignee === u.id && (
                         <button
                           type="button"
@@ -1054,9 +1052,11 @@ export default function Home() {
                           Phân công tiếp
                         </button>
                       )}
+                      <button type="button" className="secondary cancel-task-update" disabled={busy} onClick={() => setModal(null)}>Hủy</button>
                       <button className="primary" disabled={busy}>
                         {busy ? "Đang lưu…" : "Lưu tiến độ"}
                       </button>
+                      </div>
                     </div>
                   </form>
                 ) : (
@@ -1065,7 +1065,7 @@ export default function Home() {
                     <p>{modal.task.note || "Chưa có ghi chú cập nhật."}</p>
                   </div>
                 )}
-                <small className="muted">
+                <small className="muted readonly-updated">
                   Cập nhật lần cuối: {date(modal.task.updated)}
                 </small>
               </>

@@ -48,6 +48,11 @@ export function getDatabase() {
       reset_at INTEGER NOT NULL
     );
     PRAGMA user_version = 1;
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY, recipient TEXT NOT NULL, task_id TEXT NOT NULL,
+      message TEXT NOT NULL, created TEXT NOT NULL, read_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS notifications_recipient ON notifications(recipient, created);
   `);
   // Keep legacy percentage data separate from optional completed quantities.
   const columns = db.prepare("PRAGMA table_info(tasks)").all();

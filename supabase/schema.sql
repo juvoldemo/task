@@ -1,4 +1,4 @@
-﻿CREATE SCHEMA IF NOT EXISTS teamflow;
+CREATE SCHEMA IF NOT EXISTS teamflow;
 CREATE TABLE IF NOT EXISTS teamflow.accounts (id TEXT PRIMARY KEY, password TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS teamflow.sessions (id TEXT PRIMARY KEY, "user" TEXT NOT NULL, expires BIGINT NOT NULL);
 CREATE INDEX IF NOT EXISTS sessions_user ON teamflow.sessions("user");
@@ -20,3 +20,11 @@ ALTER TABLE teamflow.tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE teamflow.login_attempts ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON SCHEMA teamflow FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON ALL TABLES IN SCHEMA teamflow FROM PUBLIC, anon, authenticated;
+
+CREATE TABLE IF NOT EXISTS teamflow.notifications (
+ id TEXT PRIMARY KEY, recipient TEXT NOT NULL, task_id TEXT NOT NULL,
+ message TEXT NOT NULL, created TEXT NOT NULL, read_at TEXT
+);
+CREATE INDEX IF NOT EXISTS notifications_recipient ON teamflow.notifications(recipient, created);
+ALTER TABLE teamflow.notifications ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON teamflow.notifications FROM PUBLIC, anon, authenticated;
