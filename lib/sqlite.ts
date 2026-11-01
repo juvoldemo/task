@@ -53,11 +53,19 @@ export function getDatabase() {
       message TEXT NOT NULL, created TEXT NOT NULL, read_at TEXT
     );
     CREATE INDEX IF NOT EXISTS notifications_recipient ON notifications(recipient, created);
+    CREATE TABLE IF NOT EXISTS access_events (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, path TEXT NOT NULL,
+      device TEXT NOT NULL, visited_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS access_events_visited ON access_events(visited_at);
   `);
   // Keep legacy percentage data separate from optional completed quantities.
   const columns = db.prepare("PRAGMA table_info(tasks)").all();
   if (!columns.some((column) => column.name === "completed_quantity")) {
     db.exec("ALTER TABLE tasks ADD COLUMN completed_quantity INTEGER CHECK(completed_quantity IS NULL OR completed_quantity >= 0)");
+  }
+  if (!columns.some((column) => column.name === "deleted_at")) {
+    db.exec("ALTER TABLE tasks ADD COLUMN deleted_at TEXT; ALTER TABLE tasks ADD COLUMN deleted_by TEXT");
   }
   connection = db;
   return db;

@@ -197,6 +197,13 @@ Tài liệu nền tảng: [Next.js self-hosting](https://nextjs.org/docs/app/gui
 
 ## Supabase + Vercel
 
+### Quản trị và analytics
+
+- Mở `/admin` và nhập mật khẩu quản trị riêng, hoặc chọn **Quản trị** ở menu. Không cần đăng nhập tài khoản nhân viên hay Giám đốc. Đặt `ADMIN_PASSWORD` trong `.env.local` và biến môi trường máy chủ khi triển khai; không dùng tiền tố `NEXT_PUBLIC_`. Phiên admin riêng có thời hạn 8 giờ và nút đăng xuất; thay mật khẩu trên máy chủ sẽ vô hiệu hóa các phiên admin cũ.
+- Xóa nhiệm vụ sẽ gỡ cả các nhiệm vụ được giao tiếp bên dưới và thông báo liên quan. Hộp xác nhận hiển thị số nhiệm vụ con bị ảnh hưởng. Hệ thống giữ bản ghi với `deleted_at`, `deleted_by` để đối chiếu; không có chức năng khôi phục trên giao diện.
+- Analytics thống kê tài khoản đã đăng nhập trong 30 ngày: lượt xem màn hình, tài khoản truy cập, từng ngày, mobile/PC và 100 lượt gần nhất. Mỗi lần mở hoặc chuyển màn hình được tính một lượt; polling nền không được tính. Chưa ghi khách chưa đăng nhập, IP hay lịch sử trước khi triển khai tính năng. Ngày được tính theo múi giờ Việt Nam.
+- Khi cập nhật bản đã triển khai dùng Supabase, chạy `npm run db:setup` trước khi chạy bản mới để bổ sung bảng `access_events` và cột xóa nhiệm vụ. SQLite tự bổ sung khi khởi động. Triển khai lại ứng dụng để kích hoạt giao diện và API mới.
+
 The server supports Supabase PostgreSQL through `SUPABASE_DATABASE_URL`. Without this
 variable, local development continues to use SQLite. On Vercel the variable is required.
 

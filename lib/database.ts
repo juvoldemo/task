@@ -10,7 +10,7 @@ function postgres(client: Pool | PoolClient): Store {
     prepare(sql) {
       let index = 0;
       let query = sql.replace(/\?/g, () => `$${++index}`)
-        .replace(/\b(accounts|sessions|tasks|login_attempts|notifications)\b/g, 'teamflow.$1')
+        .replace(/\b(accounts|sessions|tasks|login_attempts|notifications|access_events)\b/g, 'teamflow.$1')
         .replace(/\buser\b/g, '"user"');
       if (query.includes("INSERT OR IGNORE")) query = query.replace("INSERT OR IGNORE", "INSERT") + " ON CONFLICT DO NOTHING";
       // Qualify the existing row in the rate-limit upsert.

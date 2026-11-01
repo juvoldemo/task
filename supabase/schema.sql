@@ -28,3 +28,13 @@ CREATE TABLE IF NOT EXISTS teamflow.notifications (
 CREATE INDEX IF NOT EXISTS notifications_recipient ON teamflow.notifications(recipient, created);
 ALTER TABLE teamflow.notifications ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON teamflow.notifications FROM PUBLIC, anon, authenticated;
+
+ALTER TABLE teamflow.tasks ADD COLUMN IF NOT EXISTS deleted_at TEXT;
+ALTER TABLE teamflow.tasks ADD COLUMN IF NOT EXISTS deleted_by TEXT;
+CREATE TABLE IF NOT EXISTS teamflow.access_events (
+ id TEXT PRIMARY KEY, user_id TEXT NOT NULL, path TEXT NOT NULL,
+ device TEXT NOT NULL, visited_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS access_events_visited ON teamflow.access_events(visited_at);
+ALTER TABLE teamflow.access_events ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON teamflow.access_events FROM PUBLIC, anon, authenticated;

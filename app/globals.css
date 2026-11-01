@@ -1760,6 +1760,7 @@ body { font-size: var(--type-body); line-height: 1.5; }
 .sidebar-actions { margin: auto 6px 20px; padding-top: 14px; border-top: 1px solid var(--workspace-border); display: grid; gap: 8px; }
 .sidebar-actions button { display: flex; align-items: center; gap: 18px; padding: 13px 12px; background: transparent; color: #677fa6; text-align: left; font-size: 15px; border-radius: 8px; }
 .sidebar-actions button:hover { background: #f0f5fc; }
+.sidebar-actions .admin-link { display: flex; align-items: center; gap: 18px; padding: 13px 12px; color: #0065ff; text-decoration: none; font-size: 15px; min-height: 44px; }
 .app main { margin-left: 245px; padding-top: 70px; min-width: 0; background: #f5f8fd; width: calc(100% - 245px); }
 .app .corporate-bar { inset: 0 0 auto 245px; height: 70px; background: #fff; color: var(--workspace-ink); box-shadow: none; border-bottom: 1px solid var(--workspace-border); pointer-events: none; }
 .app .corporate-account { right: 28px; font-size: 15px; }
@@ -2117,3 +2118,102 @@ body { font-size: var(--type-body); line-height: 1.5; }
 .notification-empty { display: grid; place-items: center; gap: 12px; padding: 40px 20px; color: #667d9f; font-size: 14px; }
 @media (max-width: 760px) { .notification-popup[popover] { right: 12px; }.notification-bell { margin-right: 2px; } }
 .app .corporate-bar { z-index: 8; }
+/* Mobile workspace: keep desktop rules intact and reclaim the sidebar space. */
+.mobile-menu-toggle, .mobile-menu-backdrop { display: none; }
+@media (max-width: 760px) {
+  .app { min-height: 100dvh; }
+  .app main { width: 100%; margin-left: 0; padding-top: 64px; }
+  .app .corporate-bar { left: 0; height: 64px; }
+  .app .corporate-account { right: 12px; max-width: calc(100% - 76px); gap: 8px; }
+  .app .corporate-account > div { min-width: 0; }
+  .app .corporate-account b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+  .app .corporate-account small { font-size: 11px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .app header { display: none; }
+  .mobile-menu-toggle { display: grid; place-items: center; position: fixed; top: 10px; left: 12px; z-index: 42; width: 44px; height: 44px; border-radius: 8px; background: #eaf2ff; color: #0065ff; }
+  .mobile-menu-backdrop { display: block; position: fixed; inset: 64px 0 0; z-index: 39; background: #10245f66; }
+  .app aside { width: min(300px, calc(100vw - 48px)); inset: 64px auto 0 0; z-index: 40; padding: 0 16px; visibility: hidden; transform: translateX(-100%); overflow-y: auto; overscroll-behavior: contain; }
+  .app.mobile-menu-open aside { visibility: visible; transform: translateX(0); }
+  .app aside > .brand { padding: 20px 12px; height: 96px; justify-content: flex-start; }
+  .app nav button { font-size: 16px; gap: 16px; padding: 14px 16px; min-height: 48px; }
+  .app nav em { position: static; margin-left: auto; }
+  .app .sidebar-actions { margin: auto 0 16px; }
+  .app .sidebar-actions button { min-height: 48px; padding: 12px 16px; }
+  .app .sidebar-actions span { display: inline; }
+  .app .content { padding: 24px 16px; min-height: calc(100dvh - 64px); }
+  .app .dashboard-content { display: flex; flex-direction: column; gap: 16px; }
+  .app .page-title, .app .dashboard-content > .page-title { flex-direction: column; align-items: stretch; min-height: 0; padding: 0; gap: 16px; margin: 0 0 20px; }
+  .app .dashboard-content > .page-title { margin: 0; }
+  .app .page-title h1 { font-size: 28px; line-height: 1.35; overflow-wrap: anywhere; }
+  .app .page-title .department-subtitle { font-size: 17px; }
+  .app .page-title .primary { width: 100%; margin: 0; min-height: 44px; font-size: 15px; }
+  .app .dashboard-content > .date-strip { position: static; width: auto; height: auto; margin: 0; padding: 12px 16px; }
+  .app .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
+  .app .stat { min-height: 156px; padding: 16px; }
+  .app .stat > div { font-size: 13px; align-items: flex-start; padding-right: 0; }
+  .app .stat > div > svg { position: static; width: 28px; height: 28px; padding: 5px; flex-shrink: 0; margin-left: 4px; }
+  .app .stat strong { font-size: 32px; margin: 10px 0; }
+  .app .stat small { font-size: 11px; line-height: 1.5; white-space: normal; }
+  .app .dashboard-grid, .app .department-cards { grid-template-columns: minmax(0, 1fr); gap: 16px; margin-bottom: 0; }
+  .app .panel-heading { padding: 18px 16px; gap: 12px; }
+  .app .panel-heading h3 { font-size: 18px; line-height: 1.4; }
+  .app .panel-heading p { font-size: 13px; line-height: 1.6; }
+  .app .text-btn { font-size: 13px; min-height: 40px; }
+  .app .department-panel { min-height: 0; }
+  .app .dept-row { margin-inline: 16px; width: calc(100% - 32px); gap: 12px; padding-block: 18px; }
+  .app .dept-body > div:first-child { font-size: 14px; gap: 8px; }
+  .app .dept-body small { font-size: 11px; gap: 8px; flex-wrap: wrap; }
+  .app .department-card { padding: 16px; }
+  .app .filters { padding: 0 16px 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .app .filters > *, .app .tasks-panel .search { width: 100%; min-width: 0; max-width: none; }
+  .app input:not([type=checkbox]):not([type=range]), .app select, .app textarea, .login-reference input { font-size: 16px; }
+  .app .search input, .app .filters select { min-height: 44px; }
+  .app .table-scroll { max-width: 100%; overscroll-behavior-x: contain; }
+  .app table { min-width: 800px; }
+  .app th, .app td { padding: 14px 16px; }
+  .app .tasks-panel td:first-child { min-width: 180px; max-width: 200px; }
+  .app td:first-child, .app th:first-child { position: sticky; left: 0; z-index: 1; background: #fff; box-shadow: 1px 0 #dce7f5; }
+  .app th:first-child { background: #f5f8fd; }
+  .app .task-tree-title { overflow-wrap: anywhere; gap: 6px; }
+  .app .task-tree-title b { min-width: 0; }
+  .app .bottom-line { flex-wrap: wrap; gap: 12px; font-size: 11px; }
+  .app .bottom-line > span:last-child { margin-left: 0; }
+  .app .overlay { padding: 12px; }
+  .app .modal, .app .task-create-modal { width: 100%; max-width: 100%; max-height: calc(100dvh - 24px); padding: 24px 16px; }
+  .app .modal > h2 { font-size: 24px; padding-right: 44px; }
+  .app .modal .close { width: 40px; height: 40px; right: 12px; top: 12px; }
+  .app .modal .form-row, .app .task-create-modal .form-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .app .task-detail-actions { display: flex; flex-direction: column; align-items: stretch; }
+  .app .modal .task-detail-actions button { width: 100%; min-height: 44px; }
+  .app .detail-meta { grid-template-columns: minmax(0, 1fr); }
+  .app .description, .app .detail-title, .app .detail-meta b { overflow-wrap: anywhere; }
+  .app .my-task-list { padding-inline: 16px; }
+  .app .my-task-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px 8px; }
+  .app .my-task-body { grid-column: 2 / -1; }
+  .app .my-task-row > .priority-badge { grid-column: 2; justify-self: start; font-size: 13px; }
+  .app .my-task-row > .badge { grid-column: 2; justify-self: start; font-size: 12px; }
+  .app .my-task-row > svg { grid-column: 3; grid-row: 2 / 4; }
+  .app .toast { width: max-content; max-width: calc(100vw - 24px); bottom: max(16px, env(safe-area-inset-bottom)); }
+  .notification-popup[popover] { top: 72px; max-height: calc(100dvh - 84px); }
+}
+@media (max-width: 760px) {
+  .app .tasks-panel table, .app .tasks-panel tbody { display: block; min-width: 0; width: 100%; }
+  .app .tasks-panel thead { display: none; }
+  .app .tasks-panel tbody tr { display: grid; grid-template-columns: minmax(0,1fr) auto; padding: 16px; border-top: 1px solid #dce7f5; gap: 12px; }
+  .app .tasks-panel td { display: block; grid-column: 1 / -1; padding: 0; border: 0; font-size: 14px; white-space: normal; }
+  .app .tasks-panel td:first-child { position: static; min-width: 0; max-width: none; background: transparent; box-shadow: none; padding: 0; }
+  .app .tasks-panel td:first-child b { font-size: 16px; line-height: 1.5; }
+  .app .tasks-panel td > small { font-size: 12px; line-height: 1.5; }
+  .app .tasks-panel td:not(:first-child):not(:last-child)::before { content: attr(data-label); display: block; color: #667d9f; font-size: 12px; margin-bottom: 5px; }
+  .app .tasks-panel td:last-child { grid-column: 2; grid-row: 5; align-self: end; color: #0065ff; }
+  .app .tasks-panel td:nth-child(5) { grid-column: 1; }
+  .app .tasks-panel .badge { display: inline-block; font-size: 12px; }
+  .app .tasks-panel .task-tree-title { padding-left: 0 !important; }
+  .app .my-task-icon { align-self: start; }
+  .app .stat > div { flex-direction: column-reverse; gap: 8px; }
+  .app .stat > div > svg { margin: 0; }
+}
+@media (max-width: 760px) {
+  .login-reference input::placeholder { color: #64728b; }
+  .login-reference .login-bottom small { font-size: 12px; }
+  .app .tasks-panel .panel-heading h3 { font-size: 18px; }
+}

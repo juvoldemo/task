@@ -28,11 +28,13 @@ import {
   SlidersHorizontal,
   TrendingUp,
   FileCheck2,
+  Menu,
 } from "lucide-react";
 import { departments } from "./data";
 import DatePicker from "./date-picker";
 import PriorityPicker from "./priority-picker";
 import Notifications from "./notifications";
+import VisitTracker from "./visit-tracker";
 const initials = (n: string) =>
   n
     .split(" ")
@@ -57,6 +59,7 @@ const deadlineDate = (s: string) =>
 const late = (t: any) => t.progress < 100 && new Date(t.deadline) < new Date();
 export default function Home() {
   const [data, setData] = useState<any>(null),
+    [mobileMenuOpen, setMobileMenuOpen] = useState(false),
     [page, setPage] = useState("dashboard"),
     [query, setQuery] = useState(""),
     [dept, setDept] = useState("all"),
@@ -78,6 +81,17 @@ export default function Home() {
       setError(e.message);
     }
   };
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileMenuOpen(false);
+        document.getElementById("mobile-menu-toggle")?.focus();
+      }
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [mobileMenuOpen]);
   useEffect(() => {
     load();
     const timer = setInterval(() => {
@@ -265,9 +279,12 @@ export default function Home() {
       </div>
     );
   return (
-    <div className="app">
+    <div className={`app${mobileMenuOpen ? " mobile-menu-open" : ""}`}>
+      <VisitTracker userId={u.id} path={page} />
+      <button id="mobile-menu-toggle" className="mobile-menu-toggle" aria-label={mobileMenuOpen ? "Đóng menu" : "Mở menu điều hướng"} aria-expanded={mobileMenuOpen} aria-controls="workspace-navigation" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>{mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}</button>
+      {mobileMenuOpen && <button className="mobile-menu-backdrop" aria-label="Đóng menu" onClick={() => setMobileMenuOpen(false)} />}
       <div className="corporate-bar"><div className="corporate-account"><Notifications items={data.notifications || []} unread={Number(data.unreadNotifications || 0)} onRefresh={load} onTask={id => { const task = all.find((task: any) => task.id === id); if (task) open({ type: "detail", task }); }} /><span className="avatar">{initials(u.name)}</span><div><b>{u.name}</b><small>{u.position}</small></div></div></div>
-      <aside>
+      <aside id="workspace-navigation" aria-label="Điều hướng không gian làm việc">
         <div className="brand">
           <img className="brand-logo" src="/logo.webp" alt="Bảo Việt Nhân thọ" width={1200} height={382} />
         </div>
@@ -285,6 +302,7 @@ export default function Home() {
                 className={page === id ? "active" : ""}
                 onClick={() => {
                   setPage(id);
+                  setMobileMenuOpen(false);
                   setDept("all");
                   setStatus("all");
                 }}
@@ -296,7 +314,8 @@ export default function Home() {
             ))}
         </nav>
         <div className="sidebar-actions">
-          <button onClick={() => open({ type: "password" })}><KeyRound size={22} /><span>Đổi mật khẩu</span></button>
+          <a className="admin-link" href="/admin"><ShieldCheck size={22} /><span>Quản trị</span></a>
+          <button onClick={() => { setMobileMenuOpen(false); open({ type: "password" }); }}><KeyRound size={22} /><span>Đổi mật khẩu</span></button>
           <button onClick={() => act({ action: "logout" })}><LogOut size={22} /><span>Đăng xuất</span></button>
         </div>
       </aside>
@@ -598,7 +617,7 @@ export default function Home() {
                           key={t.id}
                           onClick={() => open({ type: "detail", task: t })}
                         >
-                          <td>
+                          <td data-label="Công việc">
                             <div className="task-tree-title" style={{ paddingLeft: Math.min(depth, 5) * 24 }}>
                             {t.parent && <CornerDownRight className="task-child-arrow" size={21} aria-label="Công việc được giao tiếp" />}
                             <b>{t.title}</b>
@@ -611,7 +630,7 @@ export default function Home() {
                                 : ""}
                             </small>
                           </td>
-                          <td>
+                          <td data-label="Người phụ trách">
                             <div className="person-cell">
                               <span className="avatar small">
                                 {initials(name(t.assignee))}
@@ -619,15 +638,15 @@ export default function Home() {
                               {name(t.assignee)}
                             </div>
                           </td>
-                          <td className={late(t) ? "danger" : ""}>
+                          <td data-label="Thời hạn" className={late(t) ? "danger" : ""}>
                             {deadlineDate(t.deadline)}
                           </td>
-                          <td>
+                          <td data-label="Số lượng hoàn thành">
                             <div className="progress-cell">
                               {t.completed_quantity ?? "—"}
                             </div>
                           </td>
-                          <td>
+                          <td data-label="Trạng thái">
                             <span
                               className={
                                 "badge " +
@@ -649,7 +668,7 @@ export default function Home() {
                                     : "Chưa bắt đầu"}
                             </span>
                           </td>
-                          <td>
+                          <td data-label="Chi tiết">
                             <ChevronRight size={16} />
                           </td>
                         </tr>

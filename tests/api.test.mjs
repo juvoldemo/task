@@ -40,6 +40,9 @@ test("TeamFlow: standalone, authentication, authorization and persistence", asyn
         NODE_ENV: "production",
         NEXT_TELEMETRY_DISABLED: "1",
         DATABASE_PATH: database,
+        SUPABASE_DATABASE_URL: "",
+        VERCEL: "",
+        ADMIN_PASSWORD: "1795",
         APP_URL: base,
         HOSTNAME: "127.0.0.1",
         PORT: String(port),
@@ -399,6 +402,62 @@ test("TeamFlow: standalone, authentication, authorization and persistence", asyn
       } finally {
         backup.close();
       }
+    });
+    await t.test("Admin authorization, analytics and deletion of task trees", async () => {
+      const adminGet = (cookie = "") => fetch(base + "/api/work?view=admin", { headers: { cookie } });
+      assert.equal((await adminGet()).status, 401);
+      assert.equal((await adminGet(managers[0])).status, 401);
+      assert.equal((await adminGet(director)).status, 401);
+      assert.equal((await post({ action: "deleteTask", id: parent.id }, managers[0])).status, 401);
+      assert.equal((await post({ action: "deleteTask", id: parent.id }, director)).status, 401);
+      assert.equal((await post({ action: "adminLogin", password: "wrong" })).status, 401);
+      assert.equal((await post({ action: "adminLogin", password: "1795" }, "", "https://untrusted.example")).status, 403);
+      const loginAdmin = await post({ action: "adminLogin", password: "1795" });
+      assert.equal(loginAdmin.status, 200);
+      assert.match(loginAdmin.rawCookie, /^tf_admin_session=/);
+      assert.match(loginAdmin.rawCookie, /HttpOnly/);
+      assert.match(loginAdmin.rawCookie, /SameSite=Strict/);
+      let adminCookie = loginAdmin.cookie;
+      assert.deepEqual(await get(adminCookie), { user: null });
+      assert.equal((await adminGet(adminCookie.replace(/.$/, "x"))).status, 401);
+      assert.equal((await post({ action: "visit", path: "tasks" })).status, 401);
+      assert.equal((await post({ action: "visit", path: "invalid" }, managers[0])).status, 400);
+      assert.equal((await post({ action: "visit", path: "admin" }, managers[0])).status, 403);
+      assert.equal((await post({ action: "visit", path: "tasks" }, managers[0])).status, 200);
+      assert.equal((await post({ action: "visit", path: "dashboard" }, managers[0])).status, 200);
+      await get(managers[0]); await get(managers[0]);
+      const analytics = await (await adminGet(adminCookie)).json();
+      assert.equal(analytics.analytics[0].views, 2);
+      assert.equal(analytics.daily[0].visitors, 1);
+      assert.equal(analytics.recent.length, 2);
+      const root = analytics.tasks.find(task => !task.parent);
+      const children = analytics.tasks.filter(task => task.parent === root.id);
+      assert.ok(children.length > 0);
+      assert.equal((await post({ action: "deleteTask", id: root.id }, adminCookie, "https://untrusted.example")).status, 403);
+      assert.equal((await post({ action: "deleteTask", id: root.id }, adminCookie)).status, 200);
+      const remaining = (await get(director)).tasks;
+      assert.equal(remaining.length, analytics.tasks.length - children.length - 1);
+      assert.ok(!remaining.some(task => task.id === root.id || task.parent === root.id));
+      assert.equal((await post({ action: "update", id: root.id, progress: 100 }, director)).status, 403);
+      assert.equal((await post({ action: "deleteTask", id: root.id }, adminCookie)).status, 404);
+      const audit = new DatabaseSync(database, { readOnly: true });
+      try {
+        assert.equal(audit.prepare("SELECT deleted_by FROM tasks WHERE id=?").get(root.id).deleted_by, "admin");
+        for (const task of [root, ...children]) assert.equal(audit.prepare("SELECT COUNT(*) AS n FROM notifications WHERE task_id=?").get(task.id).n, 0);
+      } finally { audit.close(); }
+      await stop(); await start();
+      assert.equal((await (await adminGet(adminCookie)).json()).analytics[0].views, 2);
+      assert.ok(!(await get(director)).tasks.some(task => task.id === root.id));
+      assert.equal((await post({ action: "adminLogout" }, `${adminCookie}; ${managers[0]}`)).status, 200);
+      assert.equal((await adminGet(adminCookie)).status, 401);
+      assert.ok((await get(managers[0])).user);
+      adminCookie = (await post({ action: "adminLogin", password: "1795" })).cookie;
+      const expire = new DatabaseSync(database);
+      try { expire.prepare("UPDATE sessions SET expires=0 WHERE user LIKE '__admin__:%'").run(); } finally { expire.close(); }
+      assert.equal((await adminGet(adminCookie)).status, 401);
+      assert.equal((await post({ action: "deleteTask", id: "unknown" }, adminCookie)).status, 401);
+      for (let i = 0; i < 10; i++) assert.equal((await post({ action: "adminLogin", password: "wrong" })).status, 401);
+      assert.equal((await post({ action: "adminLogin", password: "1795" })).status, 429);
     });
   } finally {
     await stop();

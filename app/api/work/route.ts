@@ -21,6 +21,19 @@ const digest = (value: string) =>
   createHash("sha256").update(value).digest("hex");
 const tokenFrom = (req: Request) =>
   req.headers.get("cookie")?.match(/(?:^|;\s*)tf_session=([^;]+)/)?.[1];
+const adminTokenFrom = (req: Request) =>
+  req.headers.get("cookie")?.match(/(?:^|;\s*)tf_admin_session=([^;]+)/)?.[1];
+const adminIdentity = () => process.env.ADMIN_PASSWORD ? `__admin__:${digest(process.env.ADMIN_PASSWORD)}` : null;
+async function adminAuth(req: Request) {
+  const token = adminTokenFrom(req);
+  const identity = adminIdentity();
+  if (!identity || !token || token.length > 256) return false;
+  const session = await (await getDatabase()).prepare("SELECT user FROM sessions WHERE id=? AND expires>?").get(digest(token), Date.now());
+  return session?.user === identity;
+}
+function adminCookie(req: Request, token: string, maxAge: number) {
+  return `tf_admin_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${origin(req).startsWith("https:") ? "; Secure" : ""}`;
+}
 
 async function encode(password: string) {
   const salt = randomBytes(24).toString("hex");
@@ -70,14 +83,27 @@ async function notify(db: Store, actor: typeof users[number], task: Record<strin
 
 export async function GET(req: Request) {
   try {
-    const user = await auth(req);
-    if (!user) return json({ user: null });
+    const admin = new URL(req.url).searchParams.get("view") === "admin";
+    if (admin && !(await adminAuth(req))) return json({ error: "Vui lòng đăng nhập bằng mật khẩu admin." }, 401);
+    const user = admin ? null : await auth(req);
+    if (!admin && !user) return json({ user: null });
     const db = await getDatabase();
+    if (admin) {
+      const since = new Date(Date.now() - 30 * 86400000 + 7 * 3600000).toISOString().replace("Z", "+07:00");
+      return json({ users, tasks: await db.prepare("SELECT * FROM tasks WHERE deleted_at IS NULL ORDER BY updated DESC").all(),
+        analytics: await db.prepare("SELECT user_id, COUNT(*) AS views, MIN(visited_at) AS first_visit, MAX(visited_at) AS last_visit FROM access_events WHERE visited_at>=? GROUP BY user_id ORDER BY last_visit DESC").all(since),
+        daily: await db.prepare("SELECT SUBSTR(visited_at,1,10) AS day, COUNT(*) AS views, COUNT(DISTINCT user_id) AS visitors FROM access_events WHERE visited_at>=? GROUP BY SUBSTR(visited_at,1,10) ORDER BY day").all(since),
+        pages: await db.prepare("SELECT path, COUNT(*) AS views FROM access_events WHERE visited_at>=? GROUP BY path ORDER BY views DESC").all(since),
+        devices: await db.prepare("SELECT device, COUNT(*) AS views FROM access_events WHERE visited_at>=? GROUP BY device").all(since),
+        recent: await db.prepare("SELECT user_id,path,device,visited_at FROM access_events WHERE visited_at>=? ORDER BY visited_at DESC LIMIT 100").all(since),
+      });
+    }
+    if (!user) return json({ user: null });
     const tasks =
       user.role === "director"
-        ? await db.prepare("SELECT * FROM tasks ORDER BY updated DESC").all()
+        ? await db.prepare("SELECT * FROM tasks WHERE deleted_at IS NULL ORDER BY updated DESC").all()
         : await db.prepare(
-              "SELECT * FROM tasks WHERE department=? ORDER BY updated DESC",
+              "SELECT * FROM tasks WHERE department=? AND deleted_at IS NULL ORDER BY updated DESC",
             )
             .all(user.department);
     return json({
@@ -126,6 +152,43 @@ export async function POST(req: Request) {
       return json({ error: "Yêu cầu không hợp lệ." }, 400);
     const db = await getDatabase();
 
+    if (body.action === "adminLogin") {
+      const password = process.env.ADMIN_PASSWORD;
+      if (!password) return json({ error: "Chưa cấu hình mật khẩu admin trên máy chủ." }, 503);
+      const now = Date.now();
+      const key = "__admin_login__";
+      await db.prepare("DELETE FROM login_attempts WHERE reset_at<=?").run(now);
+      const attempt = await db.prepare("SELECT failures FROM login_attempts WHERE username=?").get(key);
+      if (attempt && Number(attempt.failures) >= 10) return json({ error: "Nhập sai quá nhiều lần. Vui lòng thử lại sau 15 phút." }, 429, { "Retry-After": "900" });
+      if (typeof body.password !== "string" || body.password.length > 128 || !timingSafeEqual(Buffer.from(digest(body.password)), Buffer.from(digest(password)))) {
+        await db.prepare("INSERT INTO login_attempts(username,failures,reset_at) VALUES(?,1,?) ON CONFLICT(username) DO UPDATE SET failures=failures+1").run(key, now + LOGIN_WINDOW_MS);
+        return json({ error: "Mật khẩu admin không đúng." }, 401);
+      }
+      await db.prepare("DELETE FROM login_attempts WHERE username=?").run(key);
+      await db.prepare("DELETE FROM sessions WHERE expires<=?").run(now);
+      const token = randomBytes(32).toString("hex");
+      await db.prepare("INSERT INTO sessions(id,user,expires) VALUES(?,?,?)").run(digest(token), adminIdentity(), now + SESSION_MS);
+      return json({ ok: true }, 200, { "Set-Cookie": adminCookie(req, token, SESSION_MS / 1000) });
+    }
+    if (body.action === "adminLogout") {
+      const token = adminTokenFrom(req);
+      if (token) await db.prepare("DELETE FROM sessions WHERE id=?").run(digest(token));
+      return json({ ok: true }, 200, { "Set-Cookie": adminCookie(req, "", 0) });
+    }
+    if (body.action === "deleteTask") {
+      if (!(await adminAuth(req))) return json({ error: "Vui lòng đăng nhập bằng mật khẩu admin." }, 401);
+      if (!validString(body.id, 100)) return json({ error: "Nhiệm vụ không hợp lệ." }, 400);
+      const task = await db.prepare("SELECT id FROM tasks WHERE id=? AND deleted_at IS NULL").get(body.id);
+      if (!task) return json({ error: "Nhiệm vụ không còn tồn tại." }, 404);
+      await db.transaction(async tx => {
+        const tree = await tx.prepare("WITH RECURSIVE branch(id) AS (SELECT id FROM tasks WHERE id=? UNION SELECT t.id FROM tasks t JOIN branch b ON t.parent=b.id) SELECT id FROM branch").all(body.id);
+        for (const row of tree) {
+          await tx.prepare("UPDATE tasks SET deleted_at=?,deleted_by=? WHERE id=? AND deleted_at IS NULL").run(new Date().toISOString(), "admin", row.id);
+          await tx.prepare("DELETE FROM notifications WHERE task_id=?").run(row.id);
+        }
+      });
+      return json({ ok: true });
+    }
     if (body.action === "login") {
       if (
         !validString(body.username, 100) ||
@@ -194,6 +257,16 @@ export async function POST(req: Request) {
 
     const user = await auth(req);
     if (!user) return json({ error: "Vui lòng đăng nhập." }, 401);
+    if (body.action === "visit") {
+      if (typeof body.path !== "string" || !["dashboard", "tasks", "departments", "people", "admin"].includes(body.path)) return json({ error: "Màn hình không hợp lệ." }, 400);
+      if (body.path === "admin" && user.role !== "director") return json({ error: "Không có quyền truy cập." }, 403);
+      const agent = req.headers.get("user-agent") || "";
+      const device = /mobile|android|iphone|ipad/i.test(agent) ? "Mobile / Tablet" : "PC";
+      // Store Vietnam local calendar dates consistently in both database backends.
+      const visited = new Date(Date.now() + 7 * 3600000).toISOString().replace("Z", "+07:00");
+      await db.prepare("INSERT INTO access_events(id,user_id,path,device,visited_at) VALUES(?,?,?,?,?)").run(crypto.randomUUID(), user.id, body.path, device, visited);
+      return json({ ok: true });
+    }
     if (body.action === "readNotifications") {
       if (!Array.isArray(body.ids) || body.ids.length > 100 || !body.ids.every(id => typeof id === "string")) return json({ error: "Thông báo không hợp lệ." }, 400);
       for (const id of body.ids) await db.prepare("UPDATE notifications SET read_at=? WHERE id=? AND recipient=? AND read_at IS NULL").run(new Date().toISOString(), id, user.id);
@@ -259,7 +332,7 @@ export async function POST(req: Request) {
       if (parentId) {
         if (typeof parentId !== "string")
           return json({ error: "Công việc gốc không hợp lệ." }, 400);
-        const parent = await db.prepare("SELECT * FROM tasks WHERE id=?")
+        const parent = await db.prepare("SELECT * FROM tasks WHERE id=? AND deleted_at IS NULL")
           .get(parentId);
         if (
           !parent ||
@@ -297,7 +370,7 @@ export async function POST(req: Request) {
     if (body.action === "update") {
       if (typeof body.id !== "string")
         return json({ error: "Công việc không hợp lệ." }, 400);
-      const task = await db.prepare("SELECT * FROM tasks WHERE id=?").get(body.id);
+      const task = await db.prepare("SELECT * FROM tasks WHERE id=? AND deleted_at IS NULL").get(body.id);
       if (
         !task ||
         (user.role !== "director" &&
