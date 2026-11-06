@@ -61,6 +61,9 @@ export function getDatabase() {
   `);
   // Keep legacy percentage data separate from optional completed quantities.
   const columns = db.prepare("PRAGMA table_info(tasks)").all();
+  if (!columns.some((column) => column.name === "completed_at")) {
+    db.exec("ALTER TABLE tasks ADD COLUMN completed_at TEXT");
+  }
   if (!columns.some((column) => column.name === "completed_quantity")) {
     db.exec("ALTER TABLE tasks ADD COLUMN completed_quantity INTEGER CHECK(completed_quantity IS NULL OR completed_quantity >= 0)");
   }

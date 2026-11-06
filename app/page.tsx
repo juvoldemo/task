@@ -29,8 +29,9 @@ import {
   TrendingUp,
   FileCheck2,
   Menu,
+  Download,
 } from "lucide-react";
-import { departments } from "./data";
+import { departments, canAssignWork, canAssignTo } from "./data";
 import DatePicker from "./date-picker";
 import PriorityPicker from "./priority-picker";
 import Notifications from "./notifications";
@@ -67,6 +68,7 @@ export default function Home() {
     [modal, setModal] = useState<any>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
+    [exporting, setExporting] = useState(false),
     [createParent, setCreateParent] = useState(""),
     [createTitle, setCreateTitle] = useState(""),
     [showPassword, setShowPassword] = useState(false),
@@ -166,6 +168,7 @@ export default function Home() {
   })).values());
   const taskCount = rootTasks.length;
   const filteredTaskCount = new Set(tasks.map(rootId)).size;
+  const groupColors = new Map(rootTasks.map((task: any, index: number) => [rootId(task), index % 6]));
   const done = rootTasks.filter((t: any) => t.progress === 100).length,
     overdue = rootTasks.filter(late).length,
     avg = taskCount
@@ -352,7 +355,7 @@ export default function Home() {
               </h1>}
               {page === "departments" && <p>Bức tranh tiến độ của từng phòng ban.</p>}
             </div>
-            {["director", "manager"].includes(u.role) && (
+            {canAssignWork(u) && (
               <button
                 className="primary"
                 onClick={() => open({ type: "create" })}
@@ -514,7 +517,7 @@ export default function Home() {
                       </button>
                     );
                   })}
-                  {!all.length && <div className="overview-empty"><h3>Chưa có công việc được giao</h3><p>Giao công việc đầu tiên để bắt đầu theo dõi tiến độ.</p>{["director", "manager"].includes(u.role) && <button className="secondary" onClick={() => open({ type: "create" })}>Giao công việc</button>}</div>}
+                  {!all.length && <div className="overview-empty"><h3>Chưa có công việc được giao</h3><p>Giao công việc đầu tiên để bắt đầu theo dõi tiến độ.</p>{canAssignWork(u) && <button className="secondary" onClick={() => open({ type: "create" })}>Giao công việc</button>}</div>}
                 </section>
                 <section className="panel progress-panel">
                   <div className="panel-heading">
@@ -558,6 +561,16 @@ export default function Home() {
                     <p>Cập nhật tiến độ để đội ngũ luôn đồng bộ</p>
                   )}
                 </div>
+                {page === "tasks" && <button className="export-tasks-btn" disabled={exporting || !tasks.length} onClick={async () => {
+                  setExporting(true);
+                  try {
+                    const { downloadTaskWorkbook } = await import("../lib/export-tasks");
+                    const labels: Record<string, string> = { all: "Tất cả trạng thái", active: "Chưa hoàn thành", done: "Đã hoàn thành", late: "Quá hạn" };
+                    await downloadTaskWorkbook(orderedTasks.map(item => item.task), people, departments, `Phạm vi: ${dept === "all" ? "Tất cả phòng ban được phép xem" : departments[Number(dept)]} · ${labels[status]}${query ? ` · Tìm kiếm: ${query}` : ""}`, all);
+                    setToast("Đã xuất file Excel.");
+                  } catch { setError("Không thể xuất file Excel. Vui lòng thử lại."); }
+                  finally { setExporting(false); }
+                }}><Download size={17} />{exporting ? "Đang xuất…" : "Xuất File"}</button>}
                 {page === "dashboard" && (
                   <button className="text-btn" onClick={() => setPage("tasks")}>
                     Xem tất cả <ArrowUpRight size={15} />
@@ -615,6 +628,8 @@ export default function Home() {
                       ({ task: t, depth }) => (
                         <tr
                           key={t.id}
+                          className="task-group-row"
+                          data-task-group={groupColors.get(rootId(t)) ?? 0}
                           onClick={() => open({ type: "detail", task: t })}
                         >
                           <td data-label="Công việc">
@@ -667,6 +682,7 @@ export default function Home() {
                                     ? "Đang thực hiện"
                                     : "Chưa bắt đầu"}
                             </span>
+                            {t.progress === 100 && <div className="completion-date">{t.completed_at ? `Ngày hoàn thành: ${deadlineDate(t.completed_at)}` : "Ngày hoàn thành: Chưa ghi nhận"}</div>}
                           </td>
                           <td data-label="Chi tiết">
                             <ChevronRight size={16} />
@@ -692,7 +708,7 @@ export default function Home() {
                       ? "Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm."
                       : "Chưa có công việc. Các nhiệm vụ được giao sẽ xuất hiện tại đây."}
                   </p>
-                  {!all.length && ["director", "manager"].includes(u.role) && (
+                  {!all.length && canAssignWork(u) && (
                     <button
                       className="text-btn"
                       onClick={() => open({ type: "create" })}
@@ -922,11 +938,7 @@ export default function Home() {
                       Chọn người nhận việc
                     </option>
                     {people
-                      .filter((p: any) =>
-                        u.role === "director"
-                          ? p.role === "manager"
-                          : p.department === u.department && p.id !== u.id,
-                      )
+                      .filter((p: any) => canAssignTo(u, p))
                       .map((p: any) => (
                         <option key={p.id} value={p.id}>
                           {p.name} —{" "}
@@ -944,9 +956,9 @@ export default function Home() {
                   </div>
                   <div className="deadline-field"><span>Độ ưu tiên</span><PriorityPicker /></div>
                 </div>
-                {u.role === "manager" && (
+                {canAssignWork(u) && u.role !== "director" && (
                   <label>
-                    Thuộc công việc được giám đốc giao
+                    Thuộc công việc được giao
                     <select name="parent" value={createParent} onChange={event => {
                       const parent = event.target.value;
                       setCreateParent(parent);
@@ -1060,7 +1072,7 @@ export default function Home() {
                     <div className="task-detail-footer">
                       <small className="muted">Cập nhật lần cuối: {date(modal.task.updated)}</small>
                       <div className="task-detail-actions">
-                      {u.role === "manager" && modal.task.assignee === u.id && (
+                      {canAssignWork(u) && u.role !== "director" && modal.task.assignee === u.id && (
                         <button
                           type="button"
                           className="secondary"
@@ -1084,6 +1096,7 @@ export default function Home() {
                     <p>{modal.task.note || "Chưa có ghi chú cập nhật."}</p>
                   </div>
                 )}
+                {modal.task.progress === 100 && <p className="muted">Ngày hoàn thành: {modal.task.completed_at ? deadlineDate(modal.task.completed_at) : "Chưa ghi nhận"}</p>}
                 <small className="muted readonly-updated">
                   Cập nhật lần cuối: {date(modal.task.updated)}
                 </small>

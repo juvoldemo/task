@@ -11,12 +11,13 @@
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/api.test.mjs",
+    "test": "node --test tests/api.test.mjs tests/export-tasks.test.mjs",
     "backup": "node --env-file-if-exists=.env.local scripts/backup.mjs",
     "db:setup": "node --env-file-if-exists=.env.local scripts/setup-supabase.mjs",
     "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate-supabase.mjs"
   },
   "dependencies": {
+    "exceljs": "^4.4.0",
     "lucide-react": "1.64.0",
     "next": "16.4.3",
     "pg": "^8.23.1",

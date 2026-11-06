@@ -244,17 +244,24 @@ test("TeamFlow: standalone, authentication, authorization and persistence", asyn
         assignee: pairs[0][1],
         deadline: "2030-12-30T10:00:00Z",
       };
-      assert.equal((await post(task, director)).status, 403);
       assert.equal((await post(task, members[0])).status, 403);
       assert.equal((await post(task, managers[1])).status, 403);
       assert.equal(
         (await post({ ...task, parent: parent.id }, managers[0])).status,
         403,
       );
+      assert.equal((await post({ action: "update", id: child.id, progress: 100 }, members[3])).status, 200);
+      let completionState = await (await fetch(base + "/api/work", { headers: { Cookie: members[3] } })).json();
+      const completedAt = completionState.tasks.find(item => item.id === child.id).completed_at;
+      assert.ok(Number.isFinite(Date.parse(completedAt)));
+      assert.equal((await post({ action: "update", id: child.id, progress: 100, note: "Sửa ghi chú" }, members[3])).status, 200);
+      completionState = await (await fetch(base + "/api/work", { headers: { Cookie: members[3] } })).json();
+      assert.equal(completionState.tasks.find(item => item.id === child.id).completed_at, completedAt);
       for (const completedQuantity of [297, null]) {
         assert.equal((await post({ action: "update", id: child.id, progress: 70, completedQuantity }, members[3])).status, 200);
         const state = await (await fetch(base + "/api/work", { headers: { Cookie: members[3] } })).json();
         assert.equal(state.tasks.find((item) => item.id === child.id).completed_quantity, completedQuantity);
+        assert.equal(state.tasks.find((item) => item.id === child.id).completed_at, null);
       }
       for (const completedQuantity of [-1, 5.5, "297"]) {
         assert.equal((await post({ action: "update", id: child.id, progress: 70, completedQuantity }, members[3])).status, 400);
@@ -458,6 +465,21 @@ test("TeamFlow: standalone, authentication, authorization and persistence", asyn
       assert.equal((await post({ action: "deleteTask", id: "unknown" }, adminCookie)).status, 401);
       for (let i = 0; i < 10; i++) assert.equal((await post({ action: "adminLogin", password: "wrong" })).status, 401);
       assert.equal((await post({ action: "adminLogin", password: "1795" })).status, 429);
+    });
+    await t.test("Director assigns all departments and Trinh assigns only HTKD", async () => {
+      const trinh = await login("trantrinhthitrinh");
+      const job = { action: "create", title: "Phân quyền giao việc", content: "Kiểm tra phạm vi giao việc", deadline: "2030-12-30T10:00:00Z" };
+      const roster = (await get(director)).users;
+      for (const recipient of roster.filter(p => p.department >= 0)) {
+        assert.equal((await post({ ...job, assignee: recipient.id }, director)).status, 200);
+        if (recipient.id !== "trantrinhthitrinh") {
+          assert.equal((await post({ ...job, assignee: recipient.id }, trinh)).status, recipient.department === 1 ? 200 : 403);
+        }
+      }
+      assert.equal((await post({ ...job, assignee: "phamthithanh" }, trinh)).status, 403);
+      const trinhState = await get(trinh);
+      assert.equal(trinhState.user.role, "member");
+      assert.equal(trinhState.user.canAssignDepartment, true);
     });
   } finally {
     await stop();

@@ -1,6 +1,6 @@
 import { createHash, pbkdf2, randomBytes, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
-import { users } from "../../data";
+import { users, canAssignWork, canAssignTo } from "../../data";
 import { getDatabase, type Store } from "../../../lib/database";
 
 export const runtime = "nodejs";
@@ -305,14 +305,12 @@ export async function POST(req: Request) {
       });
     }
     if (body.action === "create") {
-      if (!["director", "manager"].includes(user.role))
+      if (!canAssignWork(user))
         return json({ error: "Bạn không có quyền giao việc." }, 403);
       const target = users.find((p) => p.id === body.assignee);
       if (
         !target ||
-        (user.role === "director"
-          ? target.role !== "manager"
-          : target.department !== user.department || target.id === user.id)
+        !canAssignTo(user, target)
       ) {
         return json({ error: "Người nhận không hợp lệ." }, 403);
       }
@@ -395,9 +393,11 @@ export async function POST(req: Request) {
         );
       }
       await db.transaction(async transaction => {
-      await transaction.prepare("UPDATE tasks SET progress=?,note=?,updated=?,completed_quantity=? WHERE id=?").run(
-        body.progress, String(body.note || ""), new Date().toISOString(),
+      const now = new Date().toISOString();
+      await transaction.prepare("UPDATE tasks SET progress=?,note=?,updated=?,completed_quantity=?,completed_at=CASE WHEN ?=100 THEN CASE WHEN progress=100 THEN completed_at ELSE ? END ELSE NULL END WHERE id=?").run(
+        body.progress, String(body.note || ""), now,
         body.completedQuantity === undefined ? task.completed_quantity ?? null : body.completedQuantity,
+        body.progress, now,
         body.id,
       );
       const changes: string[] = [];

@@ -19,7 +19,11 @@ export default function Notifications({ items, unread, onRefresh, onTask }: { it
   };
   return <div className="notification-control">
     <button className="notification-bell" type="button" aria-label={`Thông báo, ${unread} chưa đọc`} aria-expanded={open} popoverTarget="notification-popup"><Bell size={23} />{unread > 0 && <span className="notification-count">{unread > 99 ? "99+" : unread}</span>}</button>
-    <div ref={popup} id="notification-popup" popover="auto" className="notification-popup" onToggle={event => setOpen(event.newState === "open")}>
+    <div ref={popup} id="notification-popup" popover="auto" className="notification-popup" onToggle={event => {
+      const isOpen = event.newState === "open";
+      setOpen(isOpen);
+      if (isOpen && !saving) void markRead(items.filter(item => !item.read_at).map(item => item.id));
+    }}>
       <div className="notification-heading"><div><h3>Thông báo</h3><p>{unread} thông báo chưa đọc</p></div><button type="button" aria-label="Đóng thông báo" onClick={() => popup.current?.hidePopover()}><X size={20} /></button></div>
       {items.some(item => !item.read_at) && <button className="notification-read-all" type="button" disabled={saving} onClick={() => markRead(items.filter(item => !item.read_at).map(item => item.id))}><CheckCheck size={17} />Đánh dấu danh sách đã đọc</button>}
       {error && <p role="alert" className="error">{error}</p>}

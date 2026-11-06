@@ -43,6 +43,7 @@ export const users = [
   ...groups.flatMap((g, d) =>
     g.map((name, i) => ({
       id: username(name),
+      canAssignDepartment: d === 1 && i === 1,
       name,
       department: d,
       role: i === 0 ? "manager" : "member",
@@ -57,3 +58,12 @@ export const users = [
     })),
   ),
 ];
+
+export const canAssignWork = (person: { role: string; canAssignDepartment?: boolean }) =>
+  person.role === "director" || person.role === "manager" || person.canAssignDepartment === true;
+
+export const canAssignTo = (
+  person: { id: string; role: string; department: number; canAssignDepartment?: boolean },
+  target: { id: string; department: number },
+) => canAssignWork(person) && target.department >= 0 && target.id !== person.id &&
+  (person.role === "director" || target.department === person.department);
