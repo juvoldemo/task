@@ -14,8 +14,8 @@ try {
  const inserted = new Set();
  // Insert all tasks first, then link their parents (arbitrary nesting/order).
  for (const row of tasks) {
-  const columns = ['id','title','content','department','assignee','creator','deadline','progress','priority','note','updated','completed_quantity','completed_at','deleted_at','deleted_by'];
-  const result = await client.query(`INSERT INTO teamflow.tasks(${columns.join(',')}) VALUES(${columns.map((_,i)=>'$'+(i+1)).join(',')}) ON CONFLICT DO NOTHING RETURNING id`, columns.map(c=>row[c] ?? null));
+  const columns = ['id','title','content','department','assignee','creator','deadline','progress','priority','note','updated','completed_quantity','completed_at','deleted_at','deleted_by','update_history'];
+  const result = await client.query(`INSERT INTO teamflow.tasks(${columns.join(',')}) VALUES(${columns.map((_,i)=>'$'+(i+1)).join(',')}) ON CONFLICT DO NOTHING RETURNING id`, columns.map(c=>row[c] ?? (c === 'update_history' ? '[]' : null)));
   if (result.rows.length) inserted.add(row.id);
  }
  for (const row of tasks.filter(t=>t.parent && inserted.has(t.id))) {

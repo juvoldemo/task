@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
@@ -30,6 +30,11 @@ import {
   FileCheck2,
   Menu,
   Download,
+  BriefcaseBusiness,
+  UserRound,
+  Flag,
+  Folder,
+  Target,
 } from "lucide-react";
 import { departments, canAssignWork, canAssignTo } from "./data";
 import DatePicker from "./date-picker";
@@ -44,6 +49,7 @@ const initials = (n: string) =>
     .join("");
 const date = (s: string) =>
   new Date(s).toLocaleString("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -58,6 +64,8 @@ const deadlineDate = (s: string) =>
     timeZone: "Asia/Ho_Chi_Minh",
   });
 const late = (t: any) => t.progress < 100 && new Date(t.deadline) < new Date();
+const completedLate = (t: any) => t.progress === 100 && t.completed_at &&
+  new Date(t.completed_at).toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }) > new Date(t.deadline).toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" });
 export default function Home() {
   const [data, setData] = useState<any>(null),
     [mobileMenuOpen, setMobileMenuOpen] = useState(false),
@@ -149,7 +157,7 @@ export default function Home() {
         (status === "done"
           ? t.progress === 100
           : status === "late"
-            ? late(t)
+            ? late(t) || completedLate(t)
             : t.progress < 100)),
   );
   const myTasks = all.filter((task: any) => task.assignee === u?.id && task.progress < 100);
@@ -166,11 +174,13 @@ export default function Home() {
     const id = rootId(task);
     return [id, taskById.get(id) || task];
   })).values());
-  const taskCount = rootTasks.length;
-  const filteredTaskCount = new Set(tasks.map(rootId)).size;
+  const taskCount = all.length;
+  const filteredTaskCount = tasks.length;
   const groupColors = new Map(rootTasks.map((task: any, index: number) => [rootId(task), index % 6]));
-  const done = rootTasks.filter((t: any) => t.progress === 100).length,
-    overdue = rootTasks.filter(late).length,
+  const taskOverdue = (task: any) => late(task) || completedLate(task);
+  const chartDone = all.filter((task: any) => task.progress === 100 && !taskOverdue(task)).length;
+  const done = all.filter((t: any) => t.progress === 100).length,
+    overdue = all.filter(taskOverdue).length,
     avg = taskCount
       ? Math.round(
           done * 100 / taskCount,
@@ -341,10 +351,10 @@ export default function Home() {
           </div>
         </header>
         <div className={`content ${page}-content`}>
-          <div className="page-title">
+          {page !== "tasks" && <div className="page-title">
             <div>
               {u.role !== "director" && <div className="eyebrow">{departments[u.department].toUpperCase()}</div>}
-              {page === "dashboard" && <><h1>Tổng quan</h1><p className="department-subtitle">{u.role === "director" ? "Toàn công ty" : departments[u.department]}</p></>}
+              {page === "dashboard" && <><h1>Tổng quan</h1>{u.role !== "director" && <p className="department-subtitle">{departments[u.department]}</p>}</>}
               {page !== "dashboard" && <h1>
                 {page === "tasks"
                     ? "Quản lý công việc"
@@ -363,13 +373,13 @@ export default function Home() {
                 <Plus size={18} /> Giao công việc
               </button>
             )}
-          </div>
+          </div>}
           {page === "dashboard" && (
             <>
               <div className="stats">
                 {[
                   [
-                    ClipboardList,
+                    BriefcaseBusiness,
                     "Tổng công việc",
                     taskCount,
                     "Tất cả nhiệm vụ đang quản lý",
@@ -418,10 +428,11 @@ export default function Home() {
                       <Icon size={19} />
                     </div>
                     <strong>{value}</strong>
-                    <small>
-                      {sub}
-                      <ArrowUpRight size={14} />
-                    </small>
+                    <svg className="stat-waves" viewBox="0 0 320 90" preserveAspectRatio="none" aria-hidden="true">
+                      <path d="M0 90 C95 100 155 88 220 58 S290 35 320 43 L320 90Z" fill="currentColor" opacity=".14" />
+                      <path d="M0 90 C125 100 170 91 235 66 S295 47 320 58 L320 90Z" fill="currentColor" opacity=".18" />
+                      <path d="M0 89 C115 99 184 100 248 67 S302 60 320 70" fill="none" stroke="white" strokeWidth="1" opacity=".75" />
+                    </svg>
                   </button>
                 ))}
               </div>
@@ -443,12 +454,11 @@ export default function Home() {
                 <section className="panel department-panel">
                   <div className="panel-heading">
                     <div>
-                      <h3>
+                      <h3 className="department-section-title"><Users size={24} aria-hidden="true" />
                         {u.role === "director"
                           ? "Tiến độ các phòng ban"
                           : "Tiến độ trong phòng"}
                       </h3>
-                      <p>Từng bước tiến, cùng một mục tiêu</p>
                     </div>
                     <button
                       className="text-btn"
@@ -461,12 +471,13 @@ export default function Home() {
                       Xem tất cả <ArrowRight size={19} />
                     </button>
                   </div>
+                  <div className={`department-progress-grid${u.role !== "director" ? " single-department" : ""}`}>
                   {(u.role === "director"
                     ? departments
                     : [departments[u.department]]
                   ).map((d, i) => {
                     const di = departments.indexOf(d),
-                      ts = rootTasks.filter((t: any) => t.department === di),
+                      ts = all.filter((t: any) => t.department === di),
                       p = ts.length
                         ? Math.round(
                             ts.reduce(
@@ -477,7 +488,8 @@ export default function Home() {
                         : 0;
                     return (
                       <button
-                        className="dept-row"
+                        className="dept-row department-progress-card"
+                        data-department={di}
                         key={d}
                         onClick={() => {
                           setDept(String(di));
@@ -492,19 +504,6 @@ export default function Home() {
                             <b>{d}</b>
                             <strong>{p}%</strong>
                           </div>
-                          <div className="track">
-                            <i
-                              style={{
-                                width: p + "%",
-                                background: [
-                                  "#0083ff",
-                                  "#f5b51b",
-                                  "#21af80",
-                                  "#8059ff",
-                                ][di],
-                              }}
-                            />
-                          </div>
                           <small>
                             {ts.length} công việc{" "}
                             <span>
@@ -517,30 +516,50 @@ export default function Home() {
                       </button>
                     );
                   })}
+                  </div>
                   {!all.length && <div className="overview-empty"><h3>Chưa có công việc được giao</h3><p>Giao công việc đầu tiên để bắt đầu theo dõi tiến độ.</p>{canAssignWork(u) && <button className="secondary" onClick={() => open({ type: "create" })}>Giao công việc</button>}</div>}
                 </section>
                 <section className="panel progress-panel">
                   <div className="panel-heading">
                     <div>
                       <h3>Hiệu suất tổng thể</h3>
-                      <p>Tình trạng công việc của {u.role === "director" ? "công ty" : "phòng"}</p>
                     </div>
                     <span className="purple-tag">
                       {u.role === "director" ? "Toàn công ty" : "Phòng của bạn"}
                     </span>
                   </div>
-                  <div className="completion-summary"><p>Tỷ lệ hoàn thành</p><strong>{avg}<span>%</span></strong><div className="track"><i style={{ width: `${avg}%` }} /></div></div>
+                  <div className="performance-layout">
+                  <div className="performance-chart">
+                    <svg viewBox="0 0 200 200" role="img" aria-label={`Tỷ lệ hoàn thành ${avg}%. ${chartDone} đã hoàn thành, ${all.filter((t: any) => t.progress > 0 && t.progress < 100 && !taskOverdue(t)).length} đang thực hiện, ${all.filter((t: any) => t.progress === 0 && !taskOverdue(t)).length} chưa bắt đầu, ${overdue} quá hạn.`}>
+                      <circle cx="100" cy="100" r="80" fill="none" stroke="#e8edf5" strokeWidth="22" />
+                      {(() => {
+                        let offset = 0;
+                        return [
+                          { count: chartDone, color: "#10b975" },
+                          { count: all.filter((t: any) => t.progress > 0 && t.progress < 100 && !taskOverdue(t)).length, color: "#ffbd23" },
+                          { count: all.filter((t: any) => t.progress === 0 && !taskOverdue(t)).length, color: "#9daec5" },
+                          { count: overdue, color: "#ff4939" },
+                        ].map(({ count, color }) => {
+                          const portion = taskCount ? count / taskCount * 100 : 0;
+                          const start = offset; offset += portion;
+                          return portion > 0 ? <circle key={color} cx="100" cy="100" r="80" fill="none" stroke={color} strokeWidth="22" pathLength="100" strokeDasharray={`${portion} ${100 - portion}`} strokeDashoffset={-start} transform="rotate(-90 100 100)" /> : null;
+                        });
+                      })()}
+                    </svg>
+                    <div className="performance-chart-label"><strong>{avg}<span>%</span></strong><span>Tỷ lệ hoàn thành</span></div>
+                  </div>
                   <div className="legend">
                     <span>
                       <i style={{ background: "#10b975" }} /> Đã hoàn thành{" "}
-                      <b>{done}</b>
+                      <b>{chartDone}</b>
                     </span>
                     <span>
                       <i style={{ background: "#9daec5" }} /> Chưa bắt đầu{" "}
-                      <b>{rootTasks.filter((t: any) => t.progress === 0 && !late(t)).length}</b>
+                      <b>{all.filter((t: any) => t.progress === 0 && !taskOverdue(t)).length}</b>
                     </span>
-                    <span><i style={{ background: "#ffbd23" }} /> Đang thực hiện <b>{rootTasks.filter((t: any) => t.progress > 0 && t.progress < 100 && !late(t)).length}</b></span>
+                    <span><i style={{ background: "#ffbd23" }} /> Đang thực hiện <b>{all.filter((t: any) => t.progress > 0 && t.progress < 100 && !taskOverdue(t)).length}</b></span>
                     <span><i style={{ background: "#ff4939" }} /> Quá hạn <b>{overdue}</b></span>
+                  </div>
                   </div>
                   {!all.length && <p className="performance-note"><Info size={21} />Chưa có dữ liệu để thống kê hiệu suất.</p>}
                 </section>
@@ -571,6 +590,7 @@ export default function Home() {
                   } catch { setError("Không thể xuất file Excel. Vui lòng thử lại."); }
                   finally { setExporting(false); }
                 }}><Download size={17} />{exporting ? "Đang xuất…" : "Xuất File"}</button>}
+                {page === "tasks" && canAssignWork(u) && <button className="primary" onClick={() => open({ type: "create" })}><Plus size={18} /> Giao công việc</button>}
                 {page === "dashboard" && (
                   <button className="text-btn" onClick={() => setPage("tasks")}>
                     Xem tất cả <ArrowUpRight size={15} />
@@ -579,7 +599,6 @@ export default function Home() {
               </div>
               <div className="filters">
                 <div className="search">
-                  <Search size={17} />
                   <input
                     placeholder="Tìm công việc, người phụ trách…"
                     value={query}
@@ -639,7 +658,7 @@ export default function Home() {
                             {!t.parent && tasks.some((child: any) => child.parent === t.id) && <ArrowDown className="task-parent-arrow" size={18} aria-label="Có công việc con bên dưới" />}
                             </div>
                             <small>
-                              {departments[t.department]}
+                              <span className="task-department-label">{departments[t.department]}</span>
                               {t.parent
                                 ? ` · ${name(t.creator)} giao cho ${name(t.assignee)}`
                                 : ""}
@@ -650,10 +669,10 @@ export default function Home() {
                               <span className="avatar small">
                                 {initials(name(t.assignee))}
                               </span>
-                              {name(t.assignee)}
+                              <strong>{name(t.assignee)}</strong>
                             </div>
                           </td>
-                          <td data-label="Thời hạn" className={late(t) ? "danger" : ""}>
+                          <td data-label="Thời hạn" className={late(t) || completedLate(t) ? "danger" : ""}>
                             {deadlineDate(t.deadline)}
                           </td>
                           <td data-label="Số lượng hoàn thành">
@@ -666,7 +685,7 @@ export default function Home() {
                               className={
                                 "badge " +
                                 (t.progress === 100
-                                  ? "completed"
+                                  ? completedLate(t) ? "overdue" : "completed"
                                   : late(t)
                                     ? "overdue"
                                     : t.progress
@@ -675,7 +694,7 @@ export default function Home() {
                               }
                             >
                               {t.progress === 100
-                                ? "Hoàn thành"
+                                ? completedLate(t) ? "Hoàn thành trễ hạn" : "Hoàn thành"
                                 : late(t)
                                   ? "Quá hạn"
                                   : t.progress
@@ -723,7 +742,7 @@ export default function Home() {
           {page === "departments" && (
             <div className="department-cards">
               {departments.map((d, i) => {
-                const ts = rootTasks.filter((t: any) => t.department === i),
+                const ts = all.filter((t: any) => t.department === i),
                   ps = people.filter((p: any) => p.department === i);
                 return (
                   <section className="panel department-card" key={d}>
@@ -795,7 +814,7 @@ export default function Home() {
                           <span className="completed-task-count">{all.filter((task: any) => task.assignee === p.id && task.progress === 100).length}</span>
                         </td>
                         <td>
-                          <span className="overdue-task-count">{all.filter((task: any) => task.assignee === p.id && late(task)).length}</span>
+                          <span className="overdue-task-count">{all.filter((task: any) => task.assignee === p.id && (late(task) || completedLate(task))).length}</span>
                         </td>
                       </tr>
                     ))}
@@ -804,13 +823,6 @@ export default function Home() {
               </div>
             </section>
           )}
-          <div className="bottom-line">
-            TeamFlow <span>Mỗi công việc, một bước tiến.</span>
-            <span>
-              <ShieldCheck size={13} /> Dữ liệu được giới hạn theo quyền truy
-              cập
-            </span>
-          </div>
         </div>
       </main>
       {toast && (
@@ -831,6 +843,7 @@ export default function Home() {
             </button>
             {modal.type === "password" && <div className="eyebrow">TEAMFLOW WORKSPACE</div>}
             <h2>
+              {modal.task && <span className="detail-header-icon"><ClipboardList size={30} /></span>}
               {modal.type === "create"
                 ? "Giao công việc mới"
                 : modal.type === "password"
@@ -987,27 +1000,31 @@ export default function Home() {
             ) : (
               <>
                 <h3 className="detail-title">{modal.task.title}</h3>
-                <div className="task-requirement"><span>NỘI DUNG YÊU CẦU</span><p>{modal.task.content}</p></div>
+                <div className="task-requirement"><span><Target size={18} /> NỘI DUNG YÊU CẦU</span><p>{modal.task.content}</p><CalendarDays className="requirement-calendar" size={68} aria-hidden="true" /></div>
                 <div className="detail-meta">
                   <span>
+                    <UserRound className="meta-icon" size={22} aria-hidden="true" />
                     Người phụ trách<b>{name(modal.task.assignee)}</b>
                   </span>
                   <span>
+                    <CalendarDays className="meta-icon" size={22} aria-hidden="true" />
                     Hạn hoàn thành
                     <b className={late(modal.task) ? "danger" : ""}>
-                      <CalendarDays size={21} />
                       {deadlineDate(modal.task.deadline)}
                     </b>
                   </span>
                   <span>
+                    <Users className="meta-icon" size={22} aria-hidden="true" />
                     Người giao<b>{name(modal.task.creator)}</b>
                   </span>
                   <span>
+                    <Flag className="meta-icon" size={22} aria-hidden="true" />
                     Độ ưu tiên<b><span className="priority-badge" data-priority={modal.task.priority}>{modal.task.priority}</span></b>
                   </span>
                 </div>
                 {modal.task.parent && (
                   <p className="callout">
+                    <Folder size={20} aria-hidden="true" />
                     Công việc gốc:{" "}
                     {all.find((t: any) => t.id === modal.task.parent)?.title ||
                       "Nhiệm vụ cấp trên"}
@@ -1036,7 +1053,7 @@ export default function Home() {
                       act({
                         action: "update",
                         id: modal.task.id,
-                        progress: f.get("completed") === "on" ? 100 : Number(f.get("quantity")) > 0 ? 1 : 0,
+                        progress: modal.task.progress === 100 || f.get("completed") === "on" ? 100 : Number(f.get("quantity")) > 0 ? 1 : 0,
                         completedQuantity: String(f.get("quantity")).trim() === "" ? null : Number(f.get("quantity")),
                         note: f.get("note"),
                       });
@@ -1054,17 +1071,16 @@ export default function Home() {
                         placeholder="Nhập số lượng, ví dụ: 297"
                       />
                     </label>
-                    <label className="completion-toggle">
-                      <input type="checkbox" name="completed" defaultChecked={modal.task.progress === 100} />
-                      Đánh dấu công việc đã hoàn thành
+                    <label className={`completion-toggle${modal.task.progress === 100 ? " completion-locked" : ""}`}>
+                      <input type="checkbox" name="completed" defaultChecked={modal.task.progress === 100} disabled={modal.task.progress === 100} />
+                      {modal.task.progress === 100 ? "Công việc đã hoàn thành (đã khóa)" : "Đánh dấu công việc đã hoàn thành"}
                     </label>
                     <label>
-                      Cập nhật / ghi chú
+                      Nhập cập nhật mới
                       <textarea
                         rows={3}
                         maxLength={5000}
                         name="note"
-                        defaultValue={modal.task.note}
                         placeholder="Kết quả đã thực hiện, vướng mắc hoặc bước tiếp theo…"
                       />
                     </label>
@@ -1085,7 +1101,7 @@ export default function Home() {
                       )}
                       <button type="button" className="secondary cancel-task-update" disabled={busy} onClick={() => setModal(null)}>Hủy</button>
                       <button className="primary" disabled={busy}>
-                        {busy ? "Đang lưu…" : "Lưu tiến độ"}
+                        <CheckCheck size={20} />{busy ? "Đang lưu…" : "Cập nhật"}
                       </button>
                       </div>
                     </div>
@@ -1096,7 +1112,21 @@ export default function Home() {
                     <p>{modal.task.note || "Chưa có ghi chú cập nhật."}</p>
                   </div>
                 )}
-                {modal.task.progress === 100 && <p className="muted">Ngày hoàn thành: {modal.task.completed_at ? deadlineDate(modal.task.completed_at) : "Chưa ghi nhận"}</p>}
+                <section className="task-update-history" aria-label="Lịch sử cập nhật">
+                  <h3>Lịch sử cập nhật</h3>
+                  {(() => {
+                    const task = all.find((t: any) => t.id === modal.task.id) || modal.task;
+                    const history = JSON.parse(task.update_history || "[]");
+                    const entries = history.length ? history : task.note ? [{ at: task.updated, author: null, note: task.note, progress: task.progress, quantity: task.completed_quantity }] : [];
+                    return entries.length ? [...entries].reverse().map((entry: any, index: number) => <article key={`${entry.at}-${index}`}>
+                      <div className="update-history-heading"><strong>{entry.author ? name(entry.author) : "Cập nhật trước đây"}</strong><time dateTime={entry.at}>{date(entry.at)}</time></div>
+                      <span className={`badge ${entry.progress === 100 ? "completed" : entry.progress > 0 ? "working" : "waiting"}`}>{entry.progress === 100 ? "Hoàn thành" : entry.progress > 0 ? "Đang thực hiện" : "Chưa bắt đầu"}</span>
+                      {entry.quantity != null && <small>Số lượng hoàn thành: {entry.quantity}</small>}
+                      {entry.note && <p>{entry.note}</p>}
+                    </article>) : <p className="muted">Chưa có cập nhật.</p>;
+                  })()}
+                </section>
+                {modal.task.progress === 100 && <p className={completedLate(modal.task) ? "danger" : "muted"}>Ngày hoàn thành: {modal.task.completed_at ? deadlineDate(modal.task.completed_at) : "Chưa ghi nhận"}{completedLate(modal.task) ? " · Hoàn thành trễ hạn" : ""}</p>}
                 <small className="muted readonly-updated">
                   Cập nhật lần cuối: {date(modal.task.updated)}
                 </small>

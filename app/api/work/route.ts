@@ -2,6 +2,7 @@ import { createHash, pbkdf2, randomBytes, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { users, canAssignWork, canAssignTo } from "../../data";
 import { getDatabase, type Store } from "../../../lib/database";
+import { completionDate } from "../../../lib/completion-date";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -112,7 +113,7 @@ export async function GET(req: Request) {
         user.role === "director"
           ? users
           : users.filter((p) => p.department === user.department),
-      tasks,
+      tasks: tasks.map(task => ({ ...task, completed_at: completionDate(task as any) })),
       notifications: await db.prepare("SELECT * FROM notifications WHERE recipient=? ORDER BY created DESC LIMIT 100").all(user.id),
       unreadNotifications: (await db.prepare("SELECT COUNT(*) AS count FROM notifications WHERE recipient=? AND read_at IS NULL").get(user.id))?.count || 0,
     });
@@ -394,10 +395,17 @@ export async function POST(req: Request) {
       }
       await db.transaction(async transaction => {
       const now = new Date().toISOString();
-      await transaction.prepare("UPDATE tasks SET progress=?,note=?,updated=?,completed_quantity=?,completed_at=CASE WHEN ?=100 THEN CASE WHEN progress=100 THEN completed_at ELSE ? END ELSE NULL END WHERE id=?").run(
+      const currentTask = await transaction.prepare("SELECT * FROM tasks WHERE id=?").get(body.id);
+      // Completion is final, including requests from an older open form.
+      if (currentTask?.progress === 100) body.progress = 100;
+      const history = JSON.parse(String(currentTask?.update_history || "[]"));
+      if (!history.length && currentTask?.note) history.push({ at: currentTask.updated, author: null, note: currentTask.note, progress: currentTask.progress, quantity: currentTask.completed_quantity ?? null });
+      history.push({ at: now, author: user.id, note: String(body.note || "").trim(), progress: body.progress, quantity: body.completedQuantity === undefined ? currentTask?.completed_quantity ?? null : body.completedQuantity });
+      await transaction.prepare("UPDATE tasks SET update_history=? WHERE id=?").run(JSON.stringify(history), body.id);
+      await transaction.prepare("UPDATE tasks SET progress=?,note=?,updated=?,completed_quantity=?,completed_at=CASE WHEN ?=100 THEN CASE WHEN progress=100 THEN COALESCE(completed_at,?) ELSE ? END ELSE NULL END WHERE id=?").run(
         body.progress, String(body.note || ""), now,
         body.completedQuantity === undefined ? task.completed_quantity ?? null : body.completedQuantity,
-        body.progress, now,
+        body.progress, completionDate(currentTask as any), now,
         body.id,
       );
       const changes: string[] = [];

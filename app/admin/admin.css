@@ -90,3 +90,7 @@
   .admin-confirm { padding: 20px; }
   .admin-confirm > div > button { flex: 1; }
 }
+.admin-page .admin-search { border-radius: 14px; border: 1px solid #dce6f3; background: #f8faff; transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease; }
+.admin-page .admin-search:hover { border-color: #b8cde8; background: #f2f7ff; }
+.admin-page .admin-search:focus-within { border-color: #6d9fe8; background: #fff; box-shadow: 0 0 0 3px #0065ff12; }
+.admin-page .admin-search input:focus { outline: none; box-shadow: none; }

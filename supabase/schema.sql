@@ -31,6 +31,7 @@ REVOKE ALL ON teamflow.notifications FROM PUBLIC, anon, authenticated;
 
 ALTER TABLE teamflow.tasks ADD COLUMN IF NOT EXISTS deleted_at TEXT;
 ALTER TABLE teamflow.tasks ADD COLUMN IF NOT EXISTS completed_at TEXT;
+ALTER TABLE teamflow.tasks ADD COLUMN IF NOT EXISTS update_history TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE teamflow.tasks ADD COLUMN IF NOT EXISTS deleted_by TEXT;
 CREATE TABLE IF NOT EXISTS teamflow.access_events (
  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, path TEXT NOT NULL,

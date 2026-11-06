@@ -61,6 +61,9 @@ export function getDatabase() {
   `);
   // Keep legacy percentage data separate from optional completed quantities.
   const columns = db.prepare("PRAGMA table_info(tasks)").all();
+  if (!columns.some((column) => column.name === "update_history")) {
+    db.exec("ALTER TABLE tasks ADD COLUMN update_history TEXT NOT NULL DEFAULT '[]'");
+  }
   if (!columns.some((column) => column.name === "completed_at")) {
     db.exec("ALTER TABLE tasks ADD COLUMN completed_at TEXT");
   }

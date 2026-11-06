@@ -257,11 +257,18 @@ test("TeamFlow: standalone, authentication, authorization and persistence", asyn
       assert.equal((await post({ action: "update", id: child.id, progress: 100, note: "Sửa ghi chú" }, members[3])).status, 200);
       completionState = await (await fetch(base + "/api/work", { headers: { Cookie: members[3] } })).json();
       assert.equal(completionState.tasks.find(item => item.id === child.id).completed_at, completedAt);
+      const updates = JSON.parse(completionState.tasks.find(item => item.id === child.id).update_history);
+      assert.ok(updates.length >= 2);
+      assert.equal(updates.at(-1).note, "Sửa ghi chú");
+      assert.equal(updates.at(-1).author, pairs[3][1]);
+      assert.ok(Number.isFinite(Date.parse(updates.at(-1).at)));
+      assert.equal(updates.at(-1).progress, 100);
       for (const completedQuantity of [297, null]) {
         assert.equal((await post({ action: "update", id: child.id, progress: 70, completedQuantity }, members[3])).status, 200);
         const state = await (await fetch(base + "/api/work", { headers: { Cookie: members[3] } })).json();
         assert.equal(state.tasks.find((item) => item.id === child.id).completed_quantity, completedQuantity);
-        assert.equal(state.tasks.find((item) => item.id === child.id).completed_at, null);
+        assert.equal(state.tasks.find((item) => item.id === child.id).completed_at, completedAt);
+        assert.equal(state.tasks.find((item) => item.id === child.id).progress, 100);
       }
       for (const completedQuantity of [-1, 5.5, "297"]) {
         assert.equal((await post({ action: "update", id: child.id, progress: 70, completedQuantity }, members[3])).status, 400);
@@ -356,7 +363,7 @@ test("TeamFlow: standalone, authentication, authorization and persistence", asyn
         assert.equal(state.user.id, "nguyenthanhnhan");
         assert.equal(
           state.tasks.find((task) => task.id === child.id).progress,
-          70,
+          100,
         );
         await login("nguyenthanhnhan", "local-test-password");
         assert.equal(

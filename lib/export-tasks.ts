@@ -123,6 +123,16 @@ export async function buildTaskWorkbook(tasks: Task[], people: Person[], departm
     row.getCell(10).numFmt = "#,##0";
     for (const c of [1, 7, 8, 9, 10, 11, 12, 15]) row.getCell(c).alignment = { vertical: "middle", horizontal: "center", wrapText: true };
     row.getCell(2).font = { name: "Arial", size: 10, bold: true, color: { argb: navy } };
+    if (s === 3 && task.completed_at) {
+      const vietnamDay = (value: string) => new Date(value).toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" });
+      const completedDay = vietnamDay(task.completed_at), deadlineDay = vietnamDay(task.deadline);
+      if (completedDay > deadlineDay) {
+        row.getCell(9).value = "Hoàn thành trễ hạn";
+        row.getCell(9).fill = { type: "pattern", pattern: "solid", fgColor: { argb: colors[2] } };
+        row.getCell(9).font = { name: "Arial", size: 10, bold: true, color: { argb: "B42318" } };
+        row.getCell(12).value = Math.round((Date.parse(completedDay) - Date.parse(deadlineDay)) / 86400000);
+      }
+    }
   });
   detail.autoFilter = { from: "A6", to: `P${Math.max(6, detail.rowCount)}` };
   detail.pageSetup.printTitlesRow = "1:6";

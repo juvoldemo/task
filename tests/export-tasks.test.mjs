@@ -37,4 +37,7 @@ test("Excel export preserves details, statuses, dates and report controls", asyn
   assert.equal(summary.getCell("G17").value, 2);
   const empty = await buildTaskWorkbook([], [], [], "Không có công việc", now);
   assert.equal(empty.getWorksheet("Tổng quan").getCell("F6").value, 0);
+  const lateReport = await buildTaskWorkbook([{ ...base, id: "late", title: "Hoàn thành trễ", progress: 100, deadline: "2026-11-05T00:00:00+07:00", completed_at: "2026-11-06T09:40:00Z" }], [], ["Phòng ban"], "Tất cả", now);
+  assert.equal(lateReport.getWorksheet("Chi tiết công việc").getCell("I7").value, "Hoàn thành trễ hạn");
+  assert.equal(lateReport.getWorksheet("Chi tiết công việc").getCell("L7").value, 1);
 });
